@@ -54,16 +54,15 @@ export function renderLobby(container, socket, state, navigate) {
   let isReady = false;
   let chat;
 
-  function getPlayerId() { return socket.id; } // will be overridden when server gives us playerId
-
   function renderPlayers(players) {
     if (!players || players.length === 0) {
       playersList.innerHTML = '<p class="text-muted">Waiting for players...</p>';
       return;
     }
+    const amIHost = state.myPlayerId === state.lobby?.host_player_id;
     playersList.innerHTML = players.map(p => {
       const isHost = p.id === state.lobby?.host_player_id;
-      const isMe = p.id === socket.playerId;
+      const isMe = p.id === state.myPlayerId;
       return `<div class="player-item">
         <div class="avatar" style="background:${escHtml(p.avatar_color || '#6366f1')}">${escHtml(p.avatar_emoji || '🎮')}</div>
         <div class="player-info">
@@ -71,14 +70,14 @@ export function renderLobby(container, socket, state, navigate) {
           <div class="player-meta">${p.role === 'spectator' ? '👁 Spectator' : (p.is_bot ? '🤖 Bot' : '👤 Player')}</div>
         </div>
         <div class="ready-dot${p.is_ready ? ' is-ready' : ''}" title="${p.is_ready ? 'Ready' : 'Not ready'}"></div>
-        ${isHost && !isMe && p.role !== 'spectator' ? `<button class="btn btn-danger btn-sm" onclick="window._kickPlayer('${p.id}')">Kick</button>` : ''}
+        ${amIHost && !isMe && p.role !== 'spectator' ? `<button class="btn btn-danger btn-sm" onclick="window._kickPlayer('${p.id}')">Kick</button>` : ''}
       </div>`;
     }).join('');
   }
 
   function updateHostControls(players) {
     const myLobby = state.lobby;
-    const isHost = myLobby && socket.playerId === myLobby.host_player_id;
+    const isHost = myLobby && state.myPlayerId === myLobby.host_player_id;
     startBtn.style.display = isHost ? 'block' : 'none';
     settingsSection.style.display = isHost ? 'block' : 'none';
     if (isHost) renderSettingsFields(myLobby.game_type);

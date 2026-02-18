@@ -66,6 +66,13 @@ socket.on('disconnect', () => {
 
 socket.on('server:lobby_created', ({ lobby, joinCode, inviteUrl }) => {
   state.lobby = lobby;
+  // Navigation is handled by server:lobby_joined which carries myPlayerId
+});
+
+socket.on('server:lobby_joined', ({ lobby, players, myPlayerId }) => {
+  state.lobby = lobby;
+  state.lobbyPlayers = players;
+  state.myPlayerId = myPlayerId;
   navigate('lobby');
 });
 

@@ -116,6 +116,7 @@ function handleCreate(socket, io, data) {
   const lobby = getLobby(lobbyId);
 
   socket.emit('server:lobby_created', { lobby, joinCode, inviteUrl });
+  socket.emit('server:lobby_joined', { lobby, players: getLobbyPlayers(lobbyId), myPlayerId: player.id });
   emitLobbyUpdate(io, lobbyId);
   resetIdleTimer(lobbyId);
 
@@ -174,6 +175,7 @@ function handleJoin(socket, io, data) {
   socket.join(`lobby:${lobby.id}`);
   socket.currentLobbyId = lobby.id;
 
+  socket.emit('server:lobby_joined', { lobby: getLobby(lobby.id), players: getLobbyPlayers(lobby.id), myPlayerId: player.id });
   io.to(`lobby:${lobby.id}`).emit('server:player_joined', { player: safePlayer(player), role });
   emitLobbyUpdate(io, lobby.id);
   touchLobby(lobby.id);
@@ -413,13 +415,8 @@ function validateInLobby(socket, lobbyId) {
 
 // ── Player resolution ─────────────────────────────────────────────────────────
 function resolvePlayer(socket, playerName, pin) {
-  // If socket already has a non-guest player ID, return it
-  if (socket.playerId) {
-    const p = db.prepare('SELECT * FROM players WHERE id = ?').get(socket.playerId);
-    if (p) return p;
-  }
-
-  // Named login/register
+  // If a playerName was provided, always do login/register first —
+  // this upgrades a guest session to a named account and updates socket.playerId.
   if (playerName && playerName.trim()) {
     const { loginOrRegister } = require('./session-manager');
     const result = loginOrRegister(socket, { username: playerName, pin, displayName: playerName });
@@ -427,9 +424,11 @@ function resolvePlayer(socket, playerName, pin) {
     return db.prepare('SELECT * FROM players WHERE id = ?').get(socket.playerId);
   }
 
-  // Use existing guest
-  const guest = db.prepare('SELECT * FROM players WHERE id = ?').get(socket.playerId);
-  if (guest) return guest;
+  // No playerName — use the existing session (guest or previously named)
+  if (socket.playerId) {
+    const p = db.prepare('SELECT * FROM players WHERE id = ?').get(socket.playerId);
+    if (p) return p;
+  }
 
   return { error: 'Could not resolve player.' };
 }
