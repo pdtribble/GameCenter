@@ -13,7 +13,7 @@ async function loadRenderer(gameType) {
 
 export function renderGame(container, socket, state, navigate) {
   const { session, gameState } = state;
-  const gameType = gameState?.gameType || gameState?.phase && detectGameType(gameState);
+  const gameType = gameState?.gameType || guessGameType(gameState);
 
   container.innerHTML = `
     <div style="display:flex;flex-direction:column;height:calc(100vh - 52px)">
