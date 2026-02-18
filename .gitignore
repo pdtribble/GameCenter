@@ -1,3 +1,6 @@
 node_modules/
 .env
 gamecenter.db
+gamecenter.db-shm
+gamecenter.db-wal
+package-lock.json
