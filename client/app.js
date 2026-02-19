@@ -73,6 +73,7 @@ socket.on('server:lobby_joined', ({ lobby, players, myPlayerId }) => {
   state.lobby = lobby;
   state.lobbyPlayers = players;
   state.myPlayerId = myPlayerId;
+  state.hostPlayerId = lobby?.host_player_id;
   navigate('lobby');
 });
 
@@ -105,6 +106,7 @@ socket.on('server:player_reconnected', ({ playerId }) => {
 
 socket.on('server:host_transferred', ({ newHostId }) => {
   if (state.lobby) state.lobby.host_player_id = newHostId;
+  state.hostPlayerId = newHostId;
   if (currentView?.update) currentView.update({ lobby: state.lobby, players: state.lobbyPlayers });
 });
 

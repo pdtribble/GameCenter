@@ -13,6 +13,10 @@ const activeSessions = new Map();
 const emitDebounce = new Map();
 const EMIT_MIN_INTERVAL_MS = Math.floor(1000 / 30); // max 30/sec
 
+// Phase-transition timers (intermission → deal_next, betting → auto_bet)
+const intermissionTimers = new Map(); // sessionId -> timeoutId
+const bettingTimers = new Map();      // sessionId -> timeoutId
+
 // ── Module loader ─────────────────────────────────────────────────────────────
 function loadGameModule(gameType) {
   const modPath = path.join(__dirname, '..', 'games', gameType, 'index.js');
@@ -68,8 +72,33 @@ function startGame(io, lobby, allPlayers) {
     }
   }
 
-  // Kick off bot runner if first player is a bot
-  botRunner.scheduleIfBot(io, sessionId, activeSessions, handleActionInternal);
+  // Kick off bot runner if first player is a bot (playing phase)
+  if (state.phase === 'playing') {
+    botRunner.scheduleIfBot(io, sessionId, activeSessions, handleActionInternal);
+  }
+
+  // If starting in betting phase, schedule auto-bet timer and bot bets
+  if (state.phase === 'betting' && state.bettingEndsAt) {
+    const delay = Math.max(0, state.bettingEndsAt - Date.now());
+    bettingTimers.set(sessionId, setTimeout(() => {
+      bettingTimers.delete(sessionId);
+      handleActionInternal(io, sessionId, '__system__', { type: 'auto_bet' });
+    }, delay));
+
+    // Schedule bot bets
+    const session = activeSessions.get(sessionId);
+    if (session) {
+      for (const player of activePlayers.filter(p => p.is_bot)) {
+        const pid = player.id;
+        setTimeout(() => {
+          const s = activeSessions.get(sessionId);
+          if (s && s.state.phase === 'betting' && (s.state.bets == null || s.state.bets[pid] === undefined)) {
+            handleActionInternal(io, sessionId, pid, { type: 'bet', amount: 10 });
+          }
+        }, 800 + Math.random() * 700);
+      }
+    }
+  }
 }
 
 // ── game:action ───────────────────────────────────────────────────────────────
@@ -79,6 +108,15 @@ function handleAction(socket, io, data) {
 
   if (!session) {
     return socket.emit('server:error', { code: 'NO_SESSION', message: 'Session not found.' });
+  }
+
+  // end_game is restricted to the lobby host
+  if (action?.type === 'end_game') {
+    const lobby = db.prepare('SELECT * FROM lobbies WHERE id = ?').get(session.lobbyId);
+    if (!lobby || lobby.host_player_id !== socket.playerId) {
+      return socket.emit('server:error', { code: 'NOT_HOST', message: 'Only the host can end the game.' });
+    }
+    return handleActionInternal(io, sessionId, socket.playerId, action);
   }
 
   if (!session.module.isTurnValid(session.state, socket.playerId)) {
@@ -129,8 +167,43 @@ function handleActionInternal(io, sessionId, playerId, action) {
     return;
   }
 
-  // Schedule bot turn if next player is a bot
-  botRunner.scheduleIfBot(io, sessionId, activeSessions, handleActionInternal);
+  const st = session.state;
+
+  // Schedule intermission → deal_next timer
+  if (st.phase === 'intermission' && st.intermissionEndsAt && !intermissionTimers.has(sessionId)) {
+    const delay = Math.max(0, st.intermissionEndsAt - Date.now());
+    intermissionTimers.set(sessionId, setTimeout(() => {
+      intermissionTimers.delete(sessionId);
+      handleActionInternal(io, sessionId, '__system__', { type: 'deal_next' });
+    }, delay));
+  }
+
+  // Schedule betting → auto_bet timer
+  if (st.phase === 'betting' && st.bettingEndsAt && !bettingTimers.has(sessionId)) {
+    const delay = Math.max(0, st.bettingEndsAt - Date.now());
+    bettingTimers.set(sessionId, setTimeout(() => {
+      bettingTimers.delete(sessionId);
+      handleActionInternal(io, sessionId, '__system__', { type: 'auto_bet' });
+    }, delay));
+  }
+
+  // Schedule immediate bot bets when in betting phase
+  if (st.phase === 'betting') {
+    for (const player of session.players.filter(p => p.is_bot && st.bets[p.id] === undefined)) {
+      const pid = player.id;
+      setTimeout(() => {
+        const s = activeSessions.get(sessionId);
+        if (s && s.state.phase === 'betting' && s.state.bets[pid] === undefined) {
+          handleActionInternal(io, sessionId, pid, { type: 'bet', amount: 10 });
+        }
+      }, 800 + Math.random() * 700);
+    }
+  }
+
+  // Schedule bot turn if next player is a bot (playing phase)
+  if (st.phase === 'playing') {
+    botRunner.scheduleIfBot(io, sessionId, activeSessions, handleActionInternal);
+  }
 }
 
 // ── State emission with debounce ──────────────────────────────────────────────
@@ -187,22 +260,29 @@ function finishGame(io, sessionId, gameOver) {
     VALUES (?, ?, ?, ?, ?)
   `);
 
-  for (const placement of gameOver.placements) {
+  const enrichedPlacements = gameOver.placements.map(p => {
+    const player = session.state.players?.find(pl => pl.id === p.playerId);
+    return { ...p, displayName: player?.displayName || p.playerId };
+  });
+
+  for (const placement of enrichedPlacements) {
     const id = uuidv4();
     insertResult.run(id, sessionId, placement.playerId, placement.placement, placement.result);
     achievementEngine.checkAfterResult(io, session, placement);
   }
 
-  const postGameSummary = mod.getPostGameSummary(state, gameOver.placements);
+  const postGameSummary = mod.getPostGameSummary(state, enrichedPlacements);
 
   io.to(`session:${sessionId}`).emit('server:game_over', {
-    results: gameOver.placements,
+    results: enrichedPlacements,
     postGameSummary,
   });
 
   activeSessions.delete(sessionId);
   emitDebounce.delete(sessionId);
   botRunner.cancelSession(sessionId);
+  if (intermissionTimers.has(sessionId)) { clearTimeout(intermissionTimers.get(sessionId)); intermissionTimers.delete(sessionId); }
+  if (bettingTimers.has(sessionId)) { clearTimeout(bettingTimers.get(sessionId)); bettingTimers.delete(sessionId); }
 }
 
 // ── game:chat ─────────────────────────────────────────────────────────────────
@@ -261,6 +341,8 @@ function forceEndSession(io, sessionId) {
   activeSessions.delete(sessionId);
   emitDebounce.delete(sessionId);
   botRunner.cancelSession(sessionId);
+  if (intermissionTimers.has(sessionId)) { clearTimeout(intermissionTimers.get(sessionId)); intermissionTimers.delete(sessionId); }
+  if (bettingTimers.has(sessionId)) { clearTimeout(bettingTimers.get(sessionId)); bettingTimers.delete(sessionId); }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

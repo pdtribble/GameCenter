@@ -9,7 +9,7 @@ export function renderPostgame(container, socket, state, navigate, data) {
     return `<div class="result-card ${cls}">
       <div class="placement-num">${emoji}</div>
       <div>
-        <div style="font-weight:700">${escHtml(r.playerId)}</div>
+        <div style="font-weight:700">${escHtml(r.displayName || r.playerId)}</div>
         <div class="text-muted">${escHtml(r.result)}</div>
       </div>
     </div>`;

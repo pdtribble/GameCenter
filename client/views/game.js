@@ -40,7 +40,7 @@ export function renderGame(container, socket, state, navigate) {
   if (gt) {
     loadRenderer(gt).then(mod => {
       renderer = mod;
-      mod.render(rendererArea, state.gameState, socket, state.myPlayerId);
+      mod.render(rendererArea, state.gameState, socket, state.myPlayerId, state.hostPlayerId);
     }).catch(() => {
       rendererArea.innerHTML = '<p class="text-muted" style="padding:2rem">Game renderer not found.</p>';
     });
@@ -60,7 +60,7 @@ export function renderGame(container, socket, state, navigate) {
     update(data) {
       if (data.state) {
         state.gameState = data.state;
-        renderer?.update?.(data.state, state.myPlayerId);
+        renderer?.update?.(data.state, state.myPlayerId, state.hostPlayerId);
       }
       if (data.pausedForReconnect !== undefined) {
         const banner = document.getElementById('announcement-bar');

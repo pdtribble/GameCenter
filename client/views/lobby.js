@@ -102,6 +102,18 @@ export function renderLobby(container, socket, state, navigate) {
           <input class="input" id="setting-startingChips" type="number" value="${settings.startingChips || 1000}" min="100">
         </div>`;
     }
+    if (gameType === 'blackjack') {
+      const chipsOn = settings.enableChips ? 'checked' : '';
+      html = `
+        <div class="form-group" style="flex-direction:row;align-items:center;gap:var(--spacing-sm)">
+          <input type="checkbox" id="setting-enableChips" ${chipsOn} style="width:auto">
+          <label for="setting-enableChips" style="margin:0">Enable Chips &amp; Betting</label>
+        </div>
+        <div class="form-group" id="bj-chips-amount-group" style="display:${settings.enableChips ? 'flex' : 'none'}">
+          <label>Starting Chips</label>
+          <input class="input" id="setting-bjStartingChips" type="number" value="${settings.startingChips || 1000}" min="100" step="100">
+        </div>`;
+    }
     html += `<div class="form-group">
       <label>Bot Difficulty</label>
       <select class="input" id="setting-botDifficulty">
@@ -111,6 +123,15 @@ export function renderLobby(container, socket, state, navigate) {
       </select>
     </div>`;
     fields.innerHTML = html;
+
+    // Wire chip toggle visibility
+    const chipsChk = fields.querySelector('#setting-enableChips');
+    if (chipsChk) {
+      chipsChk.addEventListener('change', () => {
+        const grp = fields.querySelector('#bj-chips-amount-group');
+        if (grp) grp.style.display = chipsChk.checked ? 'flex' : 'none';
+      });
+    }
   }
 
   // Init
@@ -152,6 +173,10 @@ export function renderLobby(container, socket, state, navigate) {
       settings.smallBlind = parseInt(container.querySelector('#setting-smallBlind')?.value) || 10;
       settings.bigBlind = parseInt(container.querySelector('#setting-bigBlind')?.value) || 20;
       settings.startingChips = parseInt(container.querySelector('#setting-startingChips')?.value) || 1000;
+    }
+    if (gameType === 'blackjack') {
+      settings.enableChips = !!(container.querySelector('#setting-enableChips')?.checked);
+      settings.startingChips = parseInt(container.querySelector('#setting-bjStartingChips')?.value) || 1000;
     }
     socket.emit('lobby:settings', { lobbyId: state.lobby?.id, settings });
   });
