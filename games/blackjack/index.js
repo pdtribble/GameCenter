@@ -98,7 +98,7 @@ function initGame(lobbySettings, players) {
 
   if (enableChips) {
     // Betting phase — don't deal cards yet
-    state.bettingEndsAt = Date.now() + 15000;
+    state.bettingEndsAt = Date.now() + 20000;
   } else {
     // Deal immediately
     dealNewHand(state, allPlayers);
@@ -335,7 +335,7 @@ function handleSystemAction(s, action, events) {
       s.bets = {};
       s.splitBets = {};
       s.phase = 'betting';
-      s.bettingEndsAt = Date.now() + 15000;
+      s.bettingEndsAt = Date.now() + 20000;
       // Also reset hand state for visual clarity
       s.playerHands = {};
       s.splitHands = {};
@@ -354,18 +354,30 @@ function handleSystemAction(s, action, events) {
   }
 
   if (action.type === 'auto_bet') {
-    // Auto-bet minimum for all players who haven't bet yet
-    const activePlayers = s.players.filter(p => !s.sittingOut.includes(p.id));
-    for (const p of activePlayers) {
+    // Phase guard — stale timer may fire after betting already resolved
+    if (s.phase !== 'betting') {
+      return { state: s, events: [], error: null };
+    }
+    // Bots: auto-bet minimum (bot scheduled bets may have failed)
+    for (const p of s.players.filter(p => p.is_bot && !s.sittingOut.includes(p.id))) {
       if (s.bets[p.id] === undefined) {
         const minBet = Math.min(10, s.chips[p.id] || 0);
-        if (minBet > 0) {
-          s.bets[p.id] = minBet;
-          s.chips[p.id] -= minBet;
-        } else {
-          s.bets[p.id] = 0; // broke, still let them play (with 0 bet)
-        }
+        s.bets[p.id] = minBet > 0 ? minBet : 0;
+        if (minBet > 0) s.chips[p.id] -= minBet;
       }
+    }
+    // Humans who didn't bet in time: sit them out this hand
+    for (const p of s.players.filter(p => !p.is_bot && !s.sittingOut.includes(p.id))) {
+      if (s.bets[p.id] === undefined) {
+        s.sittingOut.push(p.id);
+      }
+    }
+    // If all humans are sitting out, end the session
+    const activeHumans = s.players.filter(p => !p.is_bot && !s.sittingOut.includes(p.id));
+    if (activeHumans.length === 0) {
+      s.phase = 'session_over';
+      s.bettingEndsAt = null;
+      return { state: s, events, error: null };
     }
     s.bettingEndsAt = null;
     dealNewHand(s, s.players);

@@ -16,6 +16,11 @@ let _intermissionEffectDone = false;
 let _pendingBet = 0;
 let _resizeObserver = null;
 let _lastState = null;
+// Per-hand guards — prevent listener accumulation across rounds
+let _prevHandNumber = 0;
+let _prevBettingBuiltHand = -1;
+let _prevIntermissionBuiltHand = -1;
+let _actionBtnsForTurn = null;
 
 // ── Seat arc positions (% of table width / height) ────────────────────────────
 const SEAT_ARCS = {
@@ -73,9 +78,14 @@ export function render(container, gameState, socket, playerId, hostPlayerId) {
   _intermissionEffectDone = false;
   _pendingBet = 0;
   _lastState = null;
+  _prevHandNumber = 0;
+  _prevBettingBuiltHand = -1;
+  _prevIntermissionBuiltHand = -1;
+  _actionBtnsForTurn = null;
   if (_countdownTimer) { clearInterval(_countdownTimer); _countdownTimer = null; }
   if (_resizeObserver) { _resizeObserver.disconnect(); _resizeObserver = null; }
 
+  // DOM structure: chip tray and intermission panel sit BELOW the table, not inside it
   container.innerHTML = `
     <div class="bj-layout">
       <div class="bj-table-wrap">
@@ -89,9 +99,10 @@ export function render(container, gameState, socket, playerId, hostPlayerId) {
           <div id="bj-seats"></div>
           <div class="bj-action-panel" id="bj-action-panel" style="display:none">
             <div class="bj-action-btns" id="bj-action-btns"></div>
-            <div class="bj-betting-ui" id="bj-betting-ui" style="display:none"></div>
           </div>
         </div>
+        <div id="bj-chip-tray" style="display:none"></div>
+        <div id="bj-intermission-panel" style="display:none"></div>
       </div>
       <div class="bj-scoreboard" id="bj-scoreboard">
         <h3>Session</h3>
@@ -111,7 +122,7 @@ export function render(container, gameState, socket, playerId, hostPlayerId) {
 
   updateView(gameState, playerId, hostPlayerId, container, true);
 
-  // ResizeObserver: re-run updateView when table dimensions change
+  // ResizeObserver: re-run updateView when table dimensions change (positions only)
   var tableEl = container.querySelector('#bj-table');
   if (window.ResizeObserver && tableEl) {
     _resizeObserver = new ResizeObserver(function() {
@@ -140,19 +151,30 @@ function updateView(state, myId, hostId, container, initial) {
   if (!state) return;
   _lastState = state;
 
-  var table = container.querySelector('#bj-table');
+  // ── Detect new hand — clear stale DOM before rendering ────────────────────
+  var isNewHand = state.handNumber !== _prevHandNumber;
+  if (isNewHand) {
+    var dealerCardsReset = container.querySelector('#bj-dealer-cards');
+    if (dealerCardsReset) dealerCardsReset.innerHTML = '';
+    _prevDealerLen = 0;
+    _prevHandLens = {};
+    _prevSplitLens = {};
+    _prevDealerHidden = true;
+    _actionBtnsForTurn = null;  // force rebuild for new hand's first turn
+  }
 
   // ── Dealer cards ──────────────────────────────────────────────────────────
   var dealerCardsEl = container.querySelector('#bj-dealer-cards');
   var dealerHand = state.dealerHand || [];
   var dealerLen = dealerHand.length;
-  var isNewFlip = _prevDealerHidden && !state.dealerHidden && !initial;
+  // isNewFlip: hole card was hidden, now revealed — but only mid-hand (not on hand reset)
+  var isNewFlip = _prevDealerHidden && !state.dealerHidden && !initial && !isNewHand;
 
-  if (initial) {
+  if (initial || isNewHand) {
     renderCards(dealerCardsEl, dealerHand, dealerLen, true);
   } else {
     if (isNewFlip) {
-      // Reveal the face-down hole card (index 1) with a flip animation
+      // Replace face-down hole card with face-up version + flip animation
       var existingCards = dealerCardsEl.querySelectorAll('.playing-card');
       if (existingCards[1] && dealerHand[1]) {
         var fTmp = document.createElement('div');
@@ -164,7 +186,7 @@ function updateView(state, myId, hostId, container, initial) {
         sfxCard();
       }
     }
-    // Append any cards added beyond the initial 2 (dealer hitting after reveal)
+    // Append additional cards beyond what was already rendered
     var appendFrom = isNewFlip ? 2 : _prevDealerLen;
     if (dealerLen > appendFrom) {
       var extraCards = dealerHand.slice(appendFrom);
@@ -192,7 +214,7 @@ function updateView(state, myId, hostId, container, initial) {
   var numPlayers = Math.min(players.length, 6);
   var positions = SEAT_ARCS[numPlayers] || SEAT_ARCS[1];
 
-  // Always put the local player at the center-bottom arc seat
+  // Rotate players so local player is always at the center-bottom arc position
   var CENTER_IDX = { 1: 0, 2: 0, 3: 1, 4: 1, 5: 2, 6: 2 };
   var cIdx = CENTER_IDX[numPlayers] !== undefined ? CENTER_IDX[numPlayers] : 0;
   var myPlayerIdx = players.findIndex(function(p) { return p.id === myId; });
@@ -201,6 +223,13 @@ function updateView(state, myId, hostId, container, initial) {
     var rotateBy = ((myPlayerIdx - cIdx) % numPlayers + numPlayers) % numPlayers;
     orderedPlayers = orderedPlayers.slice(rotateBy).concat(orderedPlayers.slice(0, rotateBy));
   }
+
+  // Remove seats for players no longer in the game
+  var currentPids = orderedPlayers.map(function(p) { return p.id; });
+  var orphanSeats = seatsEl.querySelectorAll('[data-pid]');
+  orphanSeats.forEach(function(el) {
+    if (currentPids.indexOf(el.dataset.pid) === -1) el.remove();
+  });
 
   orderedPlayers.forEach(function(player, idx) {
     var pos = positions[idx] || [50, 78];
@@ -223,10 +252,11 @@ function updateView(state, myId, hostId, container, initial) {
     if (!seatEl) {
       seatEl = document.createElement('div');
       seatEl.dataset.pid = pid;
-      seatEl.style.left = px + '%';
-      seatEl.style.top = py + '%';
       seatsEl.appendChild(seatEl);
     }
+    // Always update position (handles player count changes)
+    seatEl.style.left = px + '%';
+    seatEl.style.top = py + '%';
 
     var cls = 'bj-seat';
     if (isMe) cls += ' my-seat';
@@ -237,8 +267,9 @@ function updateView(state, myId, hostId, container, initial) {
     var prevLen = _prevHandLens[pid] != null ? _prevHandLens[pid] : 0;
     var prevSplitLen = _prevSplitLens[pid] != null ? _prevSplitLens[pid] : 0;
 
-    if (!initial && handLen > prevLen) sfxCard();
-    if (!initial && splitLen > prevSplitLen) setTimeout(sfxCard, 150);
+    // Only play deal sounds on genuine new cards (not new-hand initial render)
+    if (!initial && !isNewHand && handLen > prevLen) sfxCard();
+    if (!initial && !isNewHand && splitLen > prevSplitLen) setTimeout(sfxCard, 150);
 
     var total = handTotal(hand);
     var totalColor = total > 21 ? '#f87171' : total === 21 ? '#4ade80' : 'rgba(255,255,255,0.92)';
@@ -265,13 +296,13 @@ function updateView(state, myId, hostId, container, initial) {
     }
 
     var mainCardsHtml = hand.map(function(c, i) {
-      return cardHtml(c, !initial && i >= prevLen, (i - prevLen) * 150);
+      return cardHtml(c, !initial && !isNewHand && i >= prevLen, (i - prevLen) * 150);
     }).join('');
 
     var splitSection = '';
     if (splitHand) {
       var splitCardsHtml = splitHand.map(function(c, i) {
-        return cardHtml(c, !initial && i >= prevSplitLen, (i - prevSplitLen) * 150);
+        return cardHtml(c, !initial && !isNewHand && i >= prevSplitLen, (i - prevSplitLen) * 150);
       }).join('');
       var splitTotal = handTotal(splitHand);
       splitSection = '<div style="font-size:0.65rem;color:rgba(255,255,255,0.5);margin-top:2px">Split</div>'
@@ -285,18 +316,24 @@ function updateView(state, myId, hostId, container, initial) {
     var betHtml = (state.enableChips && bet != null)
       ? '<div class="bj-bet">' + chipStackHtml(bet) + ' ' + bet + (splitBet != null ? ' / ' + splitBet : '') + '</div>'
       : '';
+    // Show "sitting out" label for players who have no cards (e.g. during betting or intermission)
+    var sittingOutHtml = (isSittingOut && hand.length === 0)
+      ? '<div style="font-size:0.62rem;color:rgba(255,255,255,0.45);margin-top:3px;font-style:italic">sitting out</div>'
+      : '';
 
     seatEl.innerHTML = '<div class="bj-seat-name">' + escHtml(player.displayName || pid) + '</div>'
       + '<div class="bj-cards' + mainHandCls + '">' + mainCardsHtml + '</div>'
       + '<div class="bj-seat-total" style="color:' + totalColor + '">'
       + (hand.length ? statusText(status, total) : '') + '</div>'
       + splitSection
+      + sittingOutHtml
       + chipsHtml + betHtml;
   });
 
   // Update prev-state tracking
   _prevDealerLen = dealerLen;
   _prevDealerHidden = !!state.dealerHidden;
+  _prevHandNumber = state.handNumber;
   orderedPlayers.forEach(function(p) {
     _prevHandLens[p.id] = ((state.playerHands && state.playerHands[p.id]) || []).length;
     _prevSplitLens[p.id] = ((state.splitHands && state.splitHands[p.id]) || []).length;
@@ -305,18 +342,18 @@ function updateView(state, myId, hostId, container, initial) {
   // ── Chip delta animations ─────────────────────────────────────────────────
   if (state.enableChips && state.chips) {
     Object.keys(state.chips).forEach(function(pid) {
-      var chips = state.chips[pid];
+      var chipVal = state.chips[pid];
       var prev = _prevChips[pid];
-      if (prev != null && chips !== prev) {
-        var delta = chips - prev;
-        var seatEl = container.querySelector('[data-pid="' + pid + '"]');
-        if (seatEl) {
+      if (prev != null && chipVal !== prev) {
+        var delta = chipVal - prev;
+        var sEl = container.querySelector('[data-pid="' + pid + '"]');
+        if (sEl) {
           sfxChip();
           var el = document.createElement('div');
           el.className = 'bj-chip-delta ' + (delta > 0 ? 'pos' : 'neg');
           el.textContent = (delta > 0 ? '+' : '') + delta;
-          seatEl.style.position = 'relative';
-          seatEl.appendChild(el);
+          sEl.style.position = 'relative';
+          sEl.appendChild(el);
           setTimeout(function() { el.remove(); }, 1200);
         }
       }
@@ -358,53 +395,78 @@ function updateView(state, myId, hostId, container, initial) {
     }).join('');
   }
 
-  // ── Action panel ──────────────────────────────────────────────────────────
+  // ── Panel visibility logic ────────────────────────────────────────────────
   var actionPanel = container.querySelector('#bj-action-panel');
-  var actionBtns = container.querySelector('#bj-action-btns');
-  var bettingUi = container.querySelector('#bj-betting-ui');
-  var existingOverlay = table.querySelector('.bj-intermission-overlay');
+  var chipTray = container.querySelector('#bj-chip-tray');
+  var intermissionPanel = container.querySelector('#bj-intermission-panel');
 
   if (state.phase === 'intermission') {
+    // Hide action panel and chip tray — keep table fully visible
     actionPanel.style.display = 'none';
-    if (!existingOverlay) {
-      buildIntermissionOverlay(table, state, myId, hostId);
-      startCountdown(table, state.intermissionEndsAt);
+    chipTray.style.display = 'none';
+
+    // Build intermission panel once per hand (prevents listener accumulation)
+    if (state.handNumber !== _prevIntermissionBuiltHand) {
+      _prevIntermissionBuiltHand = state.handNumber;
+      buildIntermissionPanel(intermissionPanel, state, myId, hostId);
+      startCountdown(intermissionPanel, state.intermissionEndsAt);
     } else {
-      // Update sit-out button state
-      var sitBtn = existingOverlay.querySelector('[data-action="sit-out"]');
+      // Just update the sit-out button toggle state
+      var sitBtn = intermissionPanel.querySelector('[data-action="sit-out"]');
       if (sitBtn) {
         var nowSitting = (state.sittingOut || []).indexOf(myId) !== -1;
         sitBtn.dataset.sitting = nowSitting ? '1' : '0';
         sitBtn.textContent = nowSitting ? '\u25BA Sit In' : '\uD83D\uDCA4 Sit Out';
       }
     }
+    intermissionPanel.style.display = '';
+
   } else {
-    if (existingOverlay) {
-      existingOverlay.remove();
-      if (_countdownTimer) { clearInterval(_countdownTimer); _countdownTimer = null; }
-    }
+    intermissionPanel.style.display = 'none';
 
     if (state.phase === 'betting' && myId && (state.bets == null || state.bets[myId] === undefined)) {
-      actionPanel.style.display = '';
-      actionBtns.style.display = 'none';
-      bettingUi.style.display = '';
-      buildBettingUi(bettingUi, state, myId, container);
+      // Show chip tray for this player to place bet — build once per hand
+      actionPanel.style.display = 'none';
+      if (state.handNumber !== _prevBettingBuiltHand) {
+        _prevBettingBuiltHand = state.handNumber;
+        _pendingBet = 0;
+        buildBettingUi(chipTray, state, myId, container);
+      }
+      chipTray.style.display = '';
+
     } else if (state.phase === 'playing' && state.currentPlayerId === myId) {
-      actionPanel.style.display = '';
-      actionBtns.style.display = '';
-      bettingUi.style.display = 'none';
-      buildActionBtns(actionBtns, state, myId);
+      // Only show action buttons if this player's hand is not yet finished
+      var myStatus = (state.playerStatus && state.playerStatus[myId]) || '';
+      var myHandDone = myStatus === 'bust' || myStatus === 'stand'
+        || myStatus === 'double' || myStatus === 'blackjack';
+
+      chipTray.style.display = 'none';
+
+      if (!myHandDone) {
+        actionPanel.style.display = '';
+        // Build action buttons once per "turn" — key changes on player/hand/split switch
+        var turnKey = (state.currentPlayerId || '') + ':' + (state.handNumber || 0)
+          + ':' + ((state.activeHand && state.activeHand[myId]) || 'main');
+        if (_actionBtnsForTurn !== turnKey) {
+          _actionBtnsForTurn = turnKey;
+          buildActionBtns(container.querySelector('#bj-action-btns'), state, myId);
+        }
+      } else {
+        actionPanel.style.display = 'none';
+      }
+
     } else {
+      chipTray.style.display = 'none';
       actionPanel.style.display = 'none';
     }
   }
 }
 
-// ── Intermission overlay ──────────────────────────────────────────────────────
-function buildIntermissionOverlay(table, state, myId, hostId) {
+// ── Intermission panel (below table, not overlaid) ────────────────────────────
+function buildIntermissionPanel(el, state, myId, hostId) {
   var isSittingOut = (state.sittingOut || []).indexOf(myId) !== -1;
 
-  var resultRows = '';
+  var resultChips = '';
   if (state.lastHandResults) {
     state.lastHandResults.forEach(function(r) {
       var player = null;
@@ -417,27 +479,32 @@ function buildIntermissionOverlay(table, state, myId, hostId) {
       var chipChange = (state.enableChips && bet != null)
         ? ' ' + (r.result === 'win' ? '+' : r.result === 'push' ? '\u00B1' : '-') + bet
         : '';
-      resultRows += '<div class="bj-result-row ' + r.result + '">'
-        + name + handLabel + ': ' + r.result.toUpperCase() + chipChange + '</div>';
+      var bg = r.result === 'win' ? '#166534' : r.result === 'push' ? '#374151' : '#7f1d1d';
+      resultChips += '<span style="display:inline-block;padding:2px 9px;border-radius:12px;font-size:0.78rem;background:'
+        + bg + ';color:#fff;white-space:nowrap">'
+        + name + handLabel + ': ' + r.result.toUpperCase() + chipChange + '</span>';
     });
   }
 
   var endGameBtn = (myId === hostId)
-    ? '<button class="btn btn-danger" data-action="end-game">End Game</button>'
+    ? '<button class="btn btn-danger btn-sm" data-action="end-game" style="margin-left:4px">End Game</button>'
     : '';
 
-  var overlay = document.createElement('div');
-  overlay.className = 'bj-intermission-overlay';
-  overlay.innerHTML = '<h2>Hand Over</h2>'
-    + '<div class="bj-result-rows">' + (resultRows || '<div class="bj-result-row">\u2014</div>') + '</div>'
-    + '<div class="bj-countdown" id="bj-countdown">5</div>'
-    + '<div class="bj-overlay-btns">'
-    + '<button class="btn btn-secondary" data-action="sit-out" data-sitting="' + (isSittingOut ? '1' : '0') + '">'
+  el.innerHTML = '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:10px 16px;'
+    + 'background:var(--color-bg-card);border-top:1px solid var(--color-border);'
+    + 'border-radius:0 0 var(--radius-md,8px) var(--radius-md,8px)">'
+    + '<div style="display:flex;gap:6px;flex-wrap:wrap;flex:1">'
+    + (resultChips || '<span style="color:var(--color-text-secondary);font-size:0.85rem">\u2014</span>')
+    + '</div>'
+    + '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">'
+    + '<span style="font-size:0.82rem;color:var(--color-text-secondary)">Next in <strong id="bj-countdown">5</strong>s</span>'
+    + '<button class="btn btn-secondary btn-sm" data-action="sit-out" data-sitting="' + (isSittingOut ? '1' : '0') + '">'
     + (isSittingOut ? '\u25BA Sit In' : '\uD83D\uDCA4 Sit Out') + '</button>'
     + endGameBtn
+    + '</div>'
     + '</div>';
 
-  overlay.addEventListener('click', function(e) {
+  el.addEventListener('click', function(e) {
     var btn = e.target.closest('[data-action]');
     if (!btn) return;
     var action = btn.dataset.action;
@@ -449,17 +516,15 @@ function buildIntermissionOverlay(table, state, myId, hostId) {
       _socket.emit('game:action', { sessionId: sessionId, action: { type: 'end_game' } });
     }
   });
-
-  table.appendChild(overlay);
 }
 
-function startCountdown(table, endsAt) {
+function startCountdown(el, endsAt) {
   if (_countdownTimer) clearInterval(_countdownTimer);
   function tick() {
-    var el = table.querySelector('#bj-countdown');
-    if (!el) { clearInterval(_countdownTimer); return; }
+    var countEl = el ? el.querySelector('#bj-countdown') : null;
+    if (!countEl) { clearInterval(_countdownTimer); return; }
     var secs = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
-    el.textContent = secs;
+    countEl.textContent = secs;
     if (secs <= 0) clearInterval(_countdownTimer);
   }
   tick();
@@ -496,24 +561,28 @@ function buildActionBtns(el, state, myId) {
     if (act === 'stand')  _socket.emit('game:action', { sessionId: sessionId, action: { type: 'stand' } });
     if (act === 'double') _socket.emit('game:action', { sessionId: sessionId, action: { type: 'double_down' } });
     if (act === 'split')  _socket.emit('game:action', { sessionId: sessionId, action: { type: 'split' } });
-    // Remove handler after one click to prevent double-fire; server will re-render
+    // Remove this handler — server response will trigger a fresh rebuild
     el.removeEventListener('click', handler);
+    _actionBtnsForTurn = null;
   });
 }
 
-// ── Betting UI (visual chip bar) ──────────────────────────────────────────────
+// ── Betting UI (visual chip bar, rendered below table in #bj-chip-tray) ───────
 var CHIP_DENOMS = [1, 5, 25, 100, 500];
 var CHIP_COLORS = { 1: 'c1', 5: 'c5', 25: 'c25', 100: 'c100', 500: 'c500' };
 
 function buildBettingUi(el, state, myId, container) {
   var chips = (state.chips && state.chips[myId] != null) ? state.chips[myId] : 0;
-  var timeLeft = state.bettingEndsAt ? Math.max(0, Math.round((state.bettingEndsAt - Date.now()) / 1000)) : 15;
+  var timeLeft = state.bettingEndsAt ? Math.max(0, Math.round((state.bettingEndsAt - Date.now()) / 1000)) : 20;
   var availDenoms = CHIP_DENOMS.filter(function(d) { return d <= chips; });
   if (availDenoms.length === 0 && chips > 0) availDenoms = [chips];
 
   _pendingBet = 0;
 
-  el.innerHTML = '<div class="bj-bet-timer" id="bj-bet-timer">\u23F1 ' + timeLeft + 's \u2014 ' + chips + ' chips</div>'
+  el.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 16px;'
+    + 'background:var(--color-bg-card);border-top:1px solid var(--color-border);'
+    + 'border-radius:0 0 var(--radius-md,8px) var(--radius-md,8px)">'
+    + '<div class="bj-bet-timer" id="bj-bet-timer">\u23F1 ' + timeLeft + 's \u2014 ' + chips + ' chips</div>'
     + '<div class="bj-bet-display" id="bj-bet-display">BET: \u2014</div>'
     + '<div class="bj-chip-bar">'
     + availDenoms.map(function(d) {
@@ -521,9 +590,10 @@ function buildBettingUi(el, state, myId, container) {
     }).join('')
     + (chips > 0 ? '<button class="bj-chip c500" data-action="all-in" title="All In" style="font-size:0.55rem">ALL<br>IN</button>' : '')
     + '</div>'
-    + '<div style="display:flex;gap:6px;margin-top:6px;justify-content:center">'
+    + '<div style="display:flex;gap:6px;margin-top:4px;justify-content:center">'
     + '<button class="btn btn-secondary bj-bet-clear" data-action="clear-bet" style="padding:4px 10px;font-size:0.75rem">\u2715 Clear</button>'
-    + '<button class="btn btn-primary" data-action="place-bet" style="padding:4px 14px;font-size:0.82rem">Deal \u2713</button>'
+    + '<button class="btn btn-primary" data-action="place-bet" style="padding:4px 14px;font-size:0.82rem">Bet \u2713</button>'
+    + '</div>'
     + '</div>';
 
   el.addEventListener('click', function(e) {
@@ -550,7 +620,7 @@ function buildBettingUi(el, state, myId, container) {
     }
   });
 
-  // Countdown timer
+  // Betting countdown timer
   if (state.bettingEndsAt) {
     if (_countdownTimer) clearInterval(_countdownTimer);
     var endTime = state.bettingEndsAt;
