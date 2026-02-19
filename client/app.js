@@ -111,6 +111,7 @@ socket.on('server:host_transferred', ({ newHostId }) => {
 socket.on('server:game_started', ({ sessionId, state: gameState }) => {
   state.session = { id: sessionId };
   state.gameState = gameState;
+  socket.currentSessionId = sessionId;  // make sessionId accessible to renderers
   navigate('game');
 });
 

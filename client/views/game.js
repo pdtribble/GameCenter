@@ -40,7 +40,7 @@ export function renderGame(container, socket, state, navigate) {
   if (gt) {
     loadRenderer(gt).then(mod => {
       renderer = mod;
-      mod.render(rendererArea, state.gameState, socket, socket.playerId);
+      mod.render(rendererArea, state.gameState, socket, state.myPlayerId);
     }).catch(() => {
       rendererArea.innerHTML = '<p class="text-muted" style="padding:2rem">Game renderer not found.</p>';
     });
