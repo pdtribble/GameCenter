@@ -13,6 +13,9 @@ let _prevSplitLens = {};
 let _prevPhase = null;
 let _countdownTimer = null;
 let _intermissionEffectDone = false;
+let _pendingBet = 0;
+let _resizeObserver = null;
+let _lastState = null;
 
 // ── Seat arc positions (% of table width / height) ────────────────────────────
 const SEAT_ARCS = {
@@ -68,7 +71,10 @@ export function render(container, gameState, socket, playerId, hostPlayerId) {
   _prevSplitLens = {};
   _prevPhase = null;
   _intermissionEffectDone = false;
+  _pendingBet = 0;
+  _lastState = null;
   if (_countdownTimer) { clearInterval(_countdownTimer); _countdownTimer = null; }
+  if (_resizeObserver) { _resizeObserver.disconnect(); _resizeObserver = null; }
 
   container.innerHTML = `
     <div class="bj-layout">
@@ -104,6 +110,15 @@ export function render(container, gameState, socket, playerId, hostPlayerId) {
   });
 
   updateView(gameState, playerId, hostPlayerId, container, true);
+
+  // ResizeObserver: re-run updateView when table dimensions change
+  var tableEl = container.querySelector('#bj-table');
+  if (window.ResizeObserver && tableEl) {
+    _resizeObserver = new ResizeObserver(function() {
+      if (_container && _lastState) updateView(_lastState, _myId, _hostId, _container, false);
+    });
+    _resizeObserver.observe(tableEl);
+  }
 }
 
 export function update(gameState, playerId, hostPlayerId) {
@@ -114,13 +129,16 @@ export function update(gameState, playerId, hostPlayerId) {
 
 export function destroy() {
   if (_countdownTimer) clearInterval(_countdownTimer);
+  if (_resizeObserver) { _resizeObserver.disconnect(); _resizeObserver = null; }
   _countdownTimer = null;
   _container = null;
+  _lastState = null;
 }
 
 // ── Core update ───────────────────────────────────────────────────────────────
 function updateView(state, myId, hostId, container, initial) {
   if (!state) return;
+  _lastState = state;
 
   var table = container.querySelector('#bj-table');
 
@@ -132,20 +150,30 @@ function updateView(state, myId, hostId, container, initial) {
 
   if (initial) {
     renderCards(dealerCardsEl, dealerHand, dealerLen, true);
-  } else if (dealerLen > _prevDealerLen) {
-    var newDealerCards = dealerLen - _prevDealerLen;
-    renderCards(dealerCardsEl, dealerHand, newDealerCards, false);
-    sfxCard();
-  } else if (isNewFlip) {
-    var cards = dealerCardsEl.querySelectorAll('.playing-card');
-    if (cards[1]) {
-      var newCardHtml = cardHtml(dealerHand[1]);
-      var tmp = document.createElement('div');
-      tmp.innerHTML = newCardHtml;
-      var newCard = tmp.firstChild;
-      newCard.classList.add('bj-flipping');
-      cards[1].replaceWith(newCard);
-      setTimeout(function() { newCard.classList.remove('bj-flipping'); }, 400);
+  } else {
+    if (isNewFlip) {
+      // Reveal the face-down hole card (index 1) with a flip animation
+      var existingCards = dealerCardsEl.querySelectorAll('.playing-card');
+      if (existingCards[1] && dealerHand[1]) {
+        var fTmp = document.createElement('div');
+        fTmp.innerHTML = cardHtml(dealerHand[1]);
+        var flippedCard = fTmp.firstChild;
+        flippedCard.classList.add('bj-flipping');
+        existingCards[1].replaceWith(flippedCard);
+        setTimeout(function() { flippedCard.classList.remove('bj-flipping'); }, 400);
+        sfxCard();
+      }
+    }
+    // Append any cards added beyond the initial 2 (dealer hitting after reveal)
+    var appendFrom = isNewFlip ? 2 : _prevDealerLen;
+    if (dealerLen > appendFrom) {
+      var extraCards = dealerHand.slice(appendFrom);
+      extraCards.forEach(function(c, i) {
+        var aTmp = document.createElement('div');
+        aTmp.innerHTML = cardHtml(c, true, (isNewFlip ? 250 : 0) + i * 150);
+        dealerCardsEl.appendChild(aTmp.firstChild);
+      });
+      if (!isNewFlip) sfxCard();
     }
   }
 
@@ -164,7 +192,17 @@ function updateView(state, myId, hostId, container, initial) {
   var numPlayers = Math.min(players.length, 6);
   var positions = SEAT_ARCS[numPlayers] || SEAT_ARCS[1];
 
-  players.forEach(function(player, idx) {
+  // Always put the local player at the center-bottom arc seat
+  var CENTER_IDX = { 1: 0, 2: 0, 3: 1, 4: 1, 5: 2, 6: 2 };
+  var cIdx = CENTER_IDX[numPlayers] !== undefined ? CENTER_IDX[numPlayers] : 0;
+  var myPlayerIdx = players.findIndex(function(p) { return p.id === myId; });
+  var orderedPlayers = players.slice();
+  if (myPlayerIdx >= 0 && myPlayerIdx !== cIdx && numPlayers > 1) {
+    var rotateBy = ((myPlayerIdx - cIdx) % numPlayers + numPlayers) % numPlayers;
+    orderedPlayers = orderedPlayers.slice(rotateBy).concat(orderedPlayers.slice(0, rotateBy));
+  }
+
+  orderedPlayers.forEach(function(player, idx) {
     var pos = positions[idx] || [50, 78];
     var px = pos[0], py = pos[1];
     var pid = player.id;
@@ -245,7 +283,7 @@ function updateView(state, myId, hostId, container, initial) {
       ? '<div class="bj-chips">\uD83D\uDCB0 ' + chips + '</div>'
       : '';
     var betHtml = (state.enableChips && bet != null)
-      ? '<div class="bj-bet">Bet: ' + bet + (splitBet != null ? ' / ' + splitBet : '') + '</div>'
+      ? '<div class="bj-bet">' + chipStackHtml(bet) + ' ' + bet + (splitBet != null ? ' / ' + splitBet : '') + '</div>'
       : '';
 
     seatEl.innerHTML = '<div class="bj-seat-name">' + escHtml(player.displayName || pid) + '</div>'
@@ -259,7 +297,7 @@ function updateView(state, myId, hostId, container, initial) {
   // Update prev-state tracking
   _prevDealerLen = dealerLen;
   _prevDealerHidden = !!state.dealerHidden;
-  players.forEach(function(p) {
+  orderedPlayers.forEach(function(p) {
     _prevHandLens[p.id] = ((state.playerHands && state.playerHands[p.id]) || []).length;
     _prevSplitLens[p.id] = ((state.splitHands && state.splitHands[p.id]) || []).length;
   });
@@ -463,72 +501,67 @@ function buildActionBtns(el, state, myId) {
   });
 }
 
-// ── Betting UI ────────────────────────────────────────────────────────────────
+// ── Betting UI (visual chip bar) ──────────────────────────────────────────────
+var CHIP_DENOMS = [1, 5, 25, 100, 500];
+var CHIP_COLORS = { 1: 'c1', 5: 'c5', 25: 'c25', 100: 'c100', 500: 'c500' };
+
 function buildBettingUi(el, state, myId, container) {
   var chips = (state.chips && state.chips[myId] != null) ? state.chips[myId] : 0;
-  var starting = state.startingChips || 1000;
-  var minBet = 10;
-  var presets = computePresets(starting, chips);
   var timeLeft = state.bettingEndsAt ? Math.max(0, Math.round((state.bettingEndsAt - Date.now()) / 1000)) : 15;
+  var availDenoms = CHIP_DENOMS.filter(function(d) { return d <= chips; });
+  if (availDenoms.length === 0 && chips > 0) availDenoms = [chips];
 
-  el.innerHTML = '<div class="bj-bet-timer" id="bj-bet-timer">\u23F1 ' + timeLeft + 's \u2014 Chips: ' + chips + '</div>'
-    + '<div class="bj-bet-presets">'
-    + presets.map(function(a) {
-      return '<button class="bj-bet-preset" data-action="bet-preset" data-amount="' + a + '">'
-        + (a >= chips ? 'ALL IN' : a) + '</button>';
+  _pendingBet = 0;
+
+  el.innerHTML = '<div class="bj-bet-timer" id="bj-bet-timer">\u23F1 ' + timeLeft + 's \u2014 ' + chips + ' chips</div>'
+    + '<div class="bj-bet-display" id="bj-bet-display">BET: \u2014</div>'
+    + '<div class="bj-chip-bar">'
+    + availDenoms.map(function(d) {
+      return '<button class="bj-chip ' + (CHIP_COLORS[d] || 'c1') + '" data-action="add-chip" data-amount="' + d + '">' + d + '</button>';
     }).join('')
+    + (chips > 0 ? '<button class="bj-chip c500" data-action="all-in" title="All In" style="font-size:0.55rem">ALL<br>IN</button>' : '')
     + '</div>'
-    + '<div class="bj-bet-custom">'
-    + '<input id="bj-bet-input" type="number" placeholder="Custom" min="' + minBet + '" max="' + chips + '" value="' + minBet + '">'
-    + '<button class="btn btn-primary" data-action="bet" style="padding:4px 12px;font-size:0.82rem">Bet</button>'
+    + '<div style="display:flex;gap:6px;margin-top:6px;justify-content:center">'
+    + '<button class="btn btn-secondary bj-bet-clear" data-action="clear-bet" style="padding:4px 10px;font-size:0.75rem">\u2715 Clear</button>'
+    + '<button class="btn btn-primary" data-action="place-bet" style="padding:4px 14px;font-size:0.82rem">Deal \u2713</button>'
     + '</div>';
 
-  // Wire bet buttons
   el.addEventListener('click', function(e) {
     var btn = e.target.closest('[data-action]');
     if (!btn) return;
     var act = btn.dataset.action;
     var sessionId = _socket.currentSessionId;
-    if (act === 'bet-preset') {
-      var amount = parseInt(btn.dataset.amount) || 0;
-      _socket.emit('game:action', { sessionId: sessionId, action: { type: 'bet', amount: amount } });
-    } else if (act === 'bet') {
-      var input = el.querySelector('#bj-bet-input');
-      var amt = parseInt(input ? input.value : 0) || 0;
-      _socket.emit('game:action', { sessionId: sessionId, action: { type: 'bet', amount: amt } });
+    var dispEl = el.querySelector('#bj-bet-display');
+    if (act === 'add-chip') {
+      var addAmt = parseInt(btn.dataset.amount) || 0;
+      _pendingBet = Math.min(_pendingBet + addAmt, chips);
+      if (dispEl) dispEl.textContent = 'BET: ' + _pendingBet;
+      sfxChip();
+    } else if (act === 'all-in') {
+      _pendingBet = chips;
+      if (dispEl) dispEl.textContent = 'BET: ' + _pendingBet + ' (ALL IN!)';
+      sfxChip();
+    } else if (act === 'clear-bet') {
+      _pendingBet = 0;
+      if (dispEl) dispEl.textContent = 'BET: \u2014';
+    } else if (act === 'place-bet') {
+      var finalBet = _pendingBet > 0 ? _pendingBet : Math.min(10, chips);
+      _socket.emit('game:action', { sessionId: sessionId, action: { type: 'bet', amount: finalBet } });
     }
   });
 
   // Countdown timer
   if (state.bettingEndsAt) {
     if (_countdownTimer) clearInterval(_countdownTimer);
+    var endTime = state.bettingEndsAt;
     _countdownTimer = setInterval(function() {
       var timerEl = container ? container.querySelector('#bj-bet-timer') : null;
       if (!timerEl) { clearInterval(_countdownTimer); return; }
-      var t = Math.max(0, Math.round((state.bettingEndsAt - Date.now()) / 1000));
-      timerEl.textContent = '\u23F1 ' + t + 's \u2014 Chips: ' + chips;
+      var t = Math.max(0, Math.round((endTime - Date.now()) / 1000));
+      timerEl.textContent = '\u23F1 ' + t + 's \u2014 ' + chips + ' chips';
       if (t <= 0) clearInterval(_countdownTimer);
     }, 500);
   }
-}
-
-function computePresets(starting, chips) {
-  var raw = [
-    Math.ceil(starting * 0.01),
-    Math.ceil(starting * 0.025),
-    Math.ceil(starting * 0.05),
-    Math.ceil(starting * 0.10),
-    Math.ceil(starting * 0.25),
-    Math.ceil(starting * 0.50),
-    chips,
-  ];
-  var seen = {};
-  var result = [];
-  raw.forEach(function(v) {
-    v = Math.min(Math.max(10, v), chips);
-    if (!seen[v]) { seen[v] = true; result.push(v); }
-  });
-  return result;
 }
 
 // ── Card rendering ────────────────────────────────────────────────────────────
@@ -564,6 +597,23 @@ function cardHtml(card, animate, delayMs) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+function chipStackHtml(amount) {
+  if (!amount) return '';
+  var denoms = [500, 100, 25, 5, 1];
+  var html = '';
+  var rem = amount;
+  for (var di = 0; di < denoms.length; di++) {
+    var d = denoms[di];
+    var count = Math.floor(rem / d);
+    rem -= count * d;
+    for (var ci = 0; ci < Math.min(count, 3); ci++) {
+      html += '<span class="bj-chip-sm ' + (CHIP_COLORS[d] || 'c1') + '"></span>';
+    }
+    if (html.length > 0 && rem === 0) break;
+  }
+  return html;
+}
+
 function handTotal(hand) {
   if (!hand || hand.some(function(c) { return c.rank === '?'; })) return '?';
   var total = 0, aces = 0;

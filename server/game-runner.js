@@ -53,6 +53,10 @@ function startGame(io, lobby, allPlayers) {
     io,
   });
 
+  const lobbyRow = db.prepare('SELECT join_code, host_player_id FROM lobbies WHERE id = ?').get(lobby.id);
+  const joinCode = lobbyRow?.join_code || null;
+  const hostPlayerId = lobbyRow?.host_player_id || null;
+
   // Emit game_started to each player with their personal state view
   for (const player of activePlayers) {
     const playerState = mod.getState(state, player.id);
@@ -60,7 +64,7 @@ function startGame(io, lobby, allPlayers) {
     for (const s of sockets) {
       s.join(`session:${sessionId}`);
       s.currentSessionId = sessionId;
-      s.emit('server:game_started', { sessionId, state: playerState });
+      s.emit('server:game_started', { sessionId, state: playerState, joinCode, hostPlayerId });
     }
   }
 
@@ -68,7 +72,7 @@ function startGame(io, lobby, allPlayers) {
     const sockets = findSocketsByPlayerId(io, spec.id);
     for (const s of sockets) {
       s.join(`session:${sessionId}`);
-      s.emit('server:game_started', { sessionId, state: mod.getState(state, null) });
+      s.emit('server:game_started', { sessionId, state: mod.getState(state, null), joinCode, hostPlayerId });
     }
   }
 
@@ -345,6 +349,30 @@ function forceEndSession(io, sessionId) {
   if (bettingTimers.has(sessionId)) { clearTimeout(bettingTimers.get(sessionId)); bettingTimers.delete(sessionId); }
 }
 
+// ── Rejoin (reconnect after page reload) ──────────────────────────────────────
+function handleRejoin(socket, io) {
+  const playerId = socket.playerId;
+  if (!playerId) return;
+
+  for (const [sessionId, session] of activeSessions) {
+    const isPlayer = session.players.some(p => p.id === playerId);
+    const isSpectator = (session.spectators || []).some(p => p.id === playerId);
+    if (!isPlayer && !isSpectator) continue;
+
+    const lobbyRow = db.prepare('SELECT join_code, host_player_id FROM lobbies WHERE id = ?').get(session.lobbyId);
+    const joinCode = lobbyRow?.join_code || null;
+    const hostPlayerId = lobbyRow?.host_player_id || null;
+
+    socket.join(`session:${sessionId}`);
+    socket.currentSessionId = sessionId;
+    const playerState = isPlayer
+      ? session.module.getState(session.state, playerId)
+      : session.module.getState(session.state, null);
+    socket.emit('server:game_started', { sessionId, state: playerState, joinCode, hostPlayerId });
+    return;
+  }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function findSocketsByPlayerId(io, playerId) {
   const result = [];
@@ -370,4 +398,5 @@ module.exports = {
   handleNewLobby,
   forceEndSession,
   getActiveSessions,
+  handleRejoin,
 };

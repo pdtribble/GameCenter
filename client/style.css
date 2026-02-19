@@ -802,3 +802,89 @@ a:hover { color: var(--color-accent-hover); }
   .bj-table .playing-card .card-rank { font-size: 0.72rem; }
   .bj-table .playing-card .card-suit { font-size: 0.6rem; }
 }
+
+/* ── Visual Chip Bar ─────────────────────────────────────────────────────────── */
+.bj-chip-bar {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 4px;
+}
+.bj-chip {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 3px solid rgba(255,255,255,0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 3px 6px rgba(0,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.2);
+  transition: transform 0.1s, box-shadow 0.1s;
+  user-select: none;
+  position: relative;
+  flex-shrink: 0;
+  line-height: 1.1;
+  text-align: center;
+  font-family: inherit;
+  background: none;
+}
+.bj-chip:hover { transform: translateY(-3px) scale(1.08); box-shadow: 0 6px 14px rgba(0,0,0,0.5); }
+.bj-chip:active { transform: translateY(0) scale(0.93); }
+.bj-chip.c1   { background: radial-gradient(circle at 35% 35%, #e5e7eb, #9ca3af); color: #374151; }
+.bj-chip.c5   { background: radial-gradient(circle at 35% 35%, #f87171, #dc2626); }
+.bj-chip.c25  { background: radial-gradient(circle at 35% 35%, #4ade80, #16a34a); }
+.bj-chip.c100 { background: radial-gradient(circle at 35% 35%, #6b7280, #111827); }
+.bj-chip.c500 { background: radial-gradient(circle at 35% 35%, #a78bfa, #7c3aed); }
+.bj-chip::before {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  border: 2px dashed rgba(255,255,255,0.28);
+  pointer-events: none;
+}
+/* Mini chip dots shown in seat bet display */
+.bj-chip-sm {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255,255,255,0.45);
+  vertical-align: middle;
+  margin: 0 1px;
+}
+.bj-chip-sm.c1   { background: #9ca3af; }
+.bj-chip-sm.c5   { background: #dc2626; }
+.bj-chip-sm.c25  { background: #16a34a; }
+.bj-chip-sm.c100 { background: #374151; }
+.bj-chip-sm.c500 { background: #7c3aed; }
+.bj-bet-display {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #fde68a;
+  min-height: 1.4em;
+  text-align: center;
+}
+
+/* ── In-game join code pill ─────────────────────────────────────────────────── */
+.game-join-code {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  user-select: none;
+}
+.game-join-code:hover { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }

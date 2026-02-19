@@ -15,11 +15,14 @@ export function renderGame(container, socket, state, navigate) {
   const { session, gameState } = state;
   const gameType = gameState?.gameType || guessGameType(gameState);
 
+  const joinCode = state.joinCode || state.lobby?.join_code || '';
+
   container.innerHTML = `
     <div style="display:flex;flex-direction:column;height:calc(100vh - 52px)">
       <div id="game-renderer-area" style="flex:1;overflow:auto;padding:var(--spacing-md)"></div>
       <div style="border-top:1px solid var(--color-border);padding:var(--spacing-sm) var(--spacing-md);display:flex;gap:var(--spacing-sm);align-items:center;background:var(--color-bg-card)">
         <div id="timer-mount" style="flex:1"></div>
+        ${joinCode ? `<span class="game-join-code" id="game-join-code" title="Click to copy join code">\uD83D\uDD11 ${escHtml(joinCode)}</span>` : ''}
         <button class="btn btn-secondary btn-sm" id="btn-toggle-chat">💬 Chat</button>
       </div>
       <div id="chat-panel" style="border-top:1px solid var(--color-border);display:none">
@@ -30,6 +33,18 @@ export function renderGame(container, socket, state, navigate) {
   const rendererArea = container.querySelector('#game-renderer-area');
   const timerMount = container.querySelector('#timer-mount');
   const chatMount = container.querySelector('#chat-mount');
+
+  // Join code copy
+  const joinCodeEl = container.querySelector('#game-join-code');
+  if (joinCodeEl && joinCode) {
+    joinCodeEl.addEventListener('click', () => {
+      navigator.clipboard.writeText(joinCode).then(() => {
+        const orig = joinCodeEl.textContent;
+        joinCodeEl.textContent = '✅ Copied!';
+        setTimeout(() => { joinCodeEl.textContent = orig; }, 1800);
+      });
+    });
+  }
 
   let renderer = null;
   let chat = null;
@@ -89,4 +104,8 @@ function guessGameType(gameState) {
   if ('community' in gameState) return 'poker';
   if ('pileSize' in gameState || 'currentRankIndex' in gameState) return 'bs';
   return null;
+}
+
+function escHtml(str) {
+  return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

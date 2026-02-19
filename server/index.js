@@ -206,6 +206,12 @@ io.on('connection', (socket) => {
     catch (err) { handleSocketError(socket, 'postgame:new_lobby', err); }
   });
 
+  // ── Rejoin (page reload while game is active) ────────────────────────────────
+  socket.on('client:rejoin_check', () => {
+    try { gameRunner.handleRejoin(socket, io); }
+    catch (err) { handleSocketError(socket, 'client:rejoin_check', err); }
+  });
+
   // ── Spectator events ────────────────────────────────────────────────────────
   socket.on('spectator:join', (data) => {
     try { lobbyManager.handleSpectatorJoin(socket, io, data); }

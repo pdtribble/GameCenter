@@ -47,10 +47,12 @@ function navigate(view, data = {}) {
 socket.on('connect', () => {
   console.log('[socket] connected', socket.id);
 
+  // Attempt to rejoin any active game session (fires server:game_started if found)
+  socket.emit('client:rejoin_check');
+
   // Check for join code in URL
   const params = new URLSearchParams(location.search);
   const joinCode = params.get('join');
-  const errorCode = params.get('error');
 
   if (joinCode) {
     navigate('home', { prefillJoinCode: joinCode });
@@ -110,9 +112,11 @@ socket.on('server:host_transferred', ({ newHostId }) => {
   if (currentView?.update) currentView.update({ lobby: state.lobby, players: state.lobbyPlayers });
 });
 
-socket.on('server:game_started', ({ sessionId, state: gameState }) => {
+socket.on('server:game_started', ({ sessionId, state: gameState, joinCode, hostPlayerId }) => {
   state.session = { id: sessionId };
   state.gameState = gameState;
+  if (joinCode) state.joinCode = joinCode;
+  if (hostPlayerId) state.hostPlayerId = hostPlayerId;
   socket.currentSessionId = sessionId;  // make sessionId accessible to renderers
   navigate('game');
 });
