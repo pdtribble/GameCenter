@@ -60,7 +60,7 @@ export function renderGame(container, socket, state, navigate) {
     update(data) {
       if (data.state) {
         state.gameState = data.state;
-        renderer?.update?.(data.state);
+        renderer?.update?.(data.state, state.myPlayerId);
       }
       if (data.pausedForReconnect !== undefined) {
         const banner = document.getElementById('announcement-bar');

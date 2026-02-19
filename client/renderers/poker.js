@@ -48,9 +48,9 @@ export function render(container, gameState, socket, playerId) {
   updateView(gameState, myId, container);
 }
 
-export function update(gameState) {
+export function update(gameState, playerId) {
   const container = document.querySelector('#game-renderer-area');
-  if (container) updateView(gameState, null, container);
+  if (container) updateView(gameState, playerId, container);
 }
 
 function updateView(state, playerId, container) {
