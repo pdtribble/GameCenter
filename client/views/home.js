@@ -38,6 +38,7 @@ export function renderHome(container, socket, state, navigate) {
               <option value="game_night">🌙 Game Night (multi-game)</option>
             </select>
           </div>
+          <div id="game-settings-fields"></div>
           <button class="btn btn-primary btn-full" id="btn-create">Create Lobby</button>
         </div>
 
@@ -71,6 +72,65 @@ export function renderHome(container, socket, state, navigate) {
   const joinCodeInput = container.querySelector('#input-join-code');
   const authError = container.querySelector('#auth-error');
   const joinError = container.querySelector('#join-error');
+  const settingsFields = container.querySelector('#game-settings-fields');
+
+  // Fetched game configs cache: gameType -> config[]
+  let gameConfigs = {};
+
+  // Fetch /api/games and populate setting fields
+  fetch('/api/games')
+    .then(r => r.json())
+    .then(games => {
+      for (const g of games) gameConfigs[g.gameType] = g.config || [];
+      renderSettingsFields(gameTypeSelect.value);
+    })
+    .catch(() => { /* silent fail — settings just won't render */ });
+
+  function renderSettingsFields(gameType) {
+    const config = gameConfigs[gameType] || [];
+    if (config.length === 0) { settingsFields.innerHTML = ''; return; }
+
+    settingsFields.innerHTML = config.map(field => {
+      if (field.type === 'number') {
+        return `<div class="form-group">
+          <label>${escHtml(field.label)}</label>
+          <input class="input" id="gs-${escHtml(field.key)}" type="number"
+            value="${field.default || 0}" min="${field.min || 0}" step="${field.step || 1}">
+        </div>`;
+      }
+      if (field.type === 'select') {
+        const opts = (field.options || []).map(v =>
+          `<option value="${v}"${v === field.default ? ' selected' : ''}>${v}</option>`
+        ).join('');
+        return `<div class="form-group">
+          <label>${escHtml(field.label)}</label>
+          <select class="input" id="gs-${escHtml(field.key)}">${opts}</select>
+        </div>`;
+      }
+      if (field.type === 'boolean') {
+        return `<div class="form-group" style="flex-direction:row;align-items:center;gap:var(--spacing-sm)">
+          <input type="checkbox" id="gs-${escHtml(field.key)}"${field.default ? ' checked' : ''} style="width:auto">
+          <label for="gs-${escHtml(field.key)}" style="margin:0">${escHtml(field.label)}</label>
+        </div>`;
+      }
+      return '';
+    }).join('');
+  }
+
+  function collectSettings(gameType) {
+    const config = gameConfigs[gameType] || [];
+    const settings = {};
+    for (const field of config) {
+      const el = container.querySelector(`#gs-${field.key}`);
+      if (!el) continue;
+      if (field.type === 'number') settings[field.key] = parseFloat(el.value) || field.default || 0;
+      else if (field.type === 'select') settings[field.key] = el.value;
+      else if (field.type === 'boolean') settings[field.key] = el.checked;
+    }
+    return settings;
+  }
+
+  gameTypeSelect.addEventListener('change', () => renderSettingsFields(gameTypeSelect.value));
 
   joinCodeInput.addEventListener('input', () => {
     joinCodeInput.value = joinCodeInput.value.toUpperCase();
@@ -82,6 +142,7 @@ export function renderHome(container, socket, state, navigate) {
       gameType: gameTypeSelect.value,
       playerName: nameInput.value.trim(),
       pin: pinInput.value,
+      settings: collectSettings(gameTypeSelect.value),
     });
   });
 
@@ -124,4 +185,8 @@ export function renderHome(container, socket, state, navigate) {
     onError(code, message) { showError(authError, message); },
     destroy() {},
   };
+}
+
+function escHtml(str) {
+  return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

@@ -195,17 +195,6 @@ io.on('connection', (socket) => {
     catch (err) { handleSocketError(socket, 'player:update', err); }
   });
 
-  // ── Post-game events ────────────────────────────────────────────────────────
-  socket.on('postgame:rematch', (data) => {
-    try { gameRunner.handleRematch(socket, io, data); }
-    catch (err) { handleSocketError(socket, 'postgame:rematch', err); }
-  });
-
-  socket.on('postgame:new_lobby', (data) => {
-    try { gameRunner.handleNewLobby(socket, io, data); }
-    catch (err) { handleSocketError(socket, 'postgame:new_lobby', err); }
-  });
-
   // ── Rejoin (page reload while game is active) ────────────────────────────────
   socket.on('client:rejoin_check', () => {
     try { gameRunner.handleRejoin(socket, io); }

@@ -1,4 +1,4 @@
-// Post-game view — results, achievements, rematch
+// Post-game view — results, highlights
 
 export function renderPostgame(container, socket, state, navigate, data) {
   const { results = [], postGameSummary = [], session } = data || {};
@@ -36,16 +36,10 @@ export function renderPostgame(container, socket, state, navigate, data) {
       </div>` : ''}
 
       <div class="card" style="display:flex;gap:var(--spacing-sm)">
-        <button class="btn btn-primary" style="flex:1" id="btn-rematch">🔄 Rematch</button>
-        <button class="btn btn-secondary" style="flex:1" id="btn-home">🏠 Home</button>
+        <button class="btn btn-primary" style="flex:1" id="btn-home">🏠 Home</button>
         <button class="btn btn-secondary" style="flex:1" id="btn-leaderboard">🏆 Leaderboard</button>
       </div>
     </div>`;
-
-  container.querySelector('#btn-rematch').addEventListener('click', () => {
-    socket.emit('postgame:rematch', { sessionId: session?.id });
-    navigate('home');
-  });
 
   container.querySelector('#btn-home').addEventListener('click', () => navigate('home'));
   container.querySelector('#btn-leaderboard').addEventListener('click', () => navigate('leaderboard'));

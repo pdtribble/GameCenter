@@ -79,7 +79,7 @@ function abandonLobby(lobbyId) {
 
 // ── lobby:create ──────────────────────────────────────────────────────────────
 function handleCreate(socket, io, data) {
-  const { gameType, playerName, pin } = data || {};
+  const { gameType, playerName, pin, settings } = data || {};
 
   const gameReg = db.prepare('SELECT * FROM game_registry WHERE game_type = ?').get(gameType);
   if (!gameReg) {
@@ -94,12 +94,13 @@ function handleCreate(socket, io, data) {
 
   const lobbyId = uuidv4();
   const joinCode = makeUniqueJoinCode();
+  const safeSettings = JSON.stringify(typeof settings === 'object' && settings !== null ? settings : {});
 
   db.transaction(() => {
     db.prepare(`
       INSERT INTO lobbies (id, join_code, game_type, host_player_id, status, settings)
-      VALUES (?, ?, ?, ?, 'waiting', '{}')
-    `).run(lobbyId, joinCode, gameType, player.id);
+      VALUES (?, ?, ?, ?, 'waiting', ?)
+    `).run(lobbyId, joinCode, gameType, player.id, safeSettings);
 
     db.prepare(`
       INSERT INTO lobby_players (lobby_id, player_id, role, is_ready)
@@ -132,10 +133,46 @@ function handleJoin(socket, io, data) {
   }
 
   const code = String(joinCode).toUpperCase().trim();
-  const lobby = db.prepare("SELECT * FROM lobbies WHERE join_code = ? AND status = 'waiting'").get(code);
+  const lobby = db.prepare('SELECT * FROM lobbies WHERE join_code = ?').get(code);
 
   if (!lobby) {
-    return socket.emit('server:error', { code: 'LOBBY_NOT_FOUND', message: 'Lobby not found or already started.' });
+    return socket.emit('server:error', { code: 'LOBBY_NOT_FOUND', message: 'Lobby not found.' });
+  }
+
+  // Mid-round join — game is already active
+  if (lobby.status === 'active') {
+    const player = resolvePlayer(socket, playerName, pin);
+    if (player.error) {
+      return socket.emit('server:error', { code: 'AUTH_ERROR', message: player.error });
+    }
+    socket.playerId = player.id;
+
+    // Add to lobby_players if not already there
+    const existingMember = db.prepare('SELECT * FROM lobby_players WHERE lobby_id = ? AND player_id = ?')
+      .get(lobby.id, player.id);
+    if (!existingMember) {
+      db.prepare('INSERT INTO lobby_players (lobby_id, player_id, role, is_ready) VALUES (?, ?, ?, 0)')
+        .run(lobby.id, player.id, 'player');
+    }
+
+    socket.join(`lobby:${lobby.id}`);
+    socket.currentLobbyId = lobby.id;
+
+    // Route to active game session via game-runner
+    const gameRunner = require('./game-runner');
+    const sessions = gameRunner.getActiveSessions();
+    for (const [sessionId, session] of sessions) {
+      if (session.lobbyId === lobby.id) {
+        gameRunner.handleMidJoin(socket, io, sessionId);
+        return;
+      }
+    }
+    // Fallback if session not found
+    return socket.emit('server:error', { code: 'SESSION_NOT_FOUND', message: 'Game session not found.' });
+  }
+
+  if (lobby.status !== 'waiting') {
+    return socket.emit('server:error', { code: 'LOBBY_NOT_FOUND', message: 'This lobby is no longer available.' });
   }
 
   const kicked = kickedPlayers.get(lobby.id) || new Set();

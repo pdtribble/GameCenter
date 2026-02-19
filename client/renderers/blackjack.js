@@ -1,4 +1,4 @@
-// Blackjack renderer — CSS felt table, arc seats, animations, Web Audio
+// Blackjack renderer — CSS felt table, ellipse arc seats, animations, Web Audio
 
 // ── Module-level state (persists across update() calls) ───────────────────────
 let _socket = null;
@@ -21,16 +21,45 @@ let _prevHandNumber = 0;
 let _prevBettingBuiltHand = -1;
 let _prevIntermissionBuiltHand = -1;
 let _actionBtnsForTurn = null;
+// Portrait layout tracking
+let _isPortrait = false;
 
-// ── Seat arc positions (% of table width / height) ────────────────────────────
-const SEAT_ARCS = {
-  1: [[50, 78]],
-  2: [[27, 73], [73, 73]],
-  3: [[14, 67], [50, 81], [86, 67]],
-  4: [[10, 59], [35, 76], [65, 76], [90, 59]],
-  5: [[8, 54], [26, 71], [50, 81], [74, 71], [92, 54]],
-  6: [[8, 49], [23, 66], [40, 78], [60, 78], [77, 66], [92, 49]],
-};
+// ── Ellipse arc seat positioning ──────────────────────────────────────────────
+// Ellipse parameters as fractions of table width/height
+const TABLE_CX  = 0.50;  // center x ratio
+const TABLE_CY  = 0.50;  // center y ratio
+const SEAT_RX   = 0.38;  // horizontal radius (fraction of table width)
+const SEAT_RY   = 0.28;  // vertical radius (fraction of table height)
+const ARC_START = 200;   // arc start angle (degrees)
+const ARC_END   = 340;   // arc end angle (degrees)
+
+function getSeatPositions(numPlayers, myPlayerIdx) {
+  if (numPlayers <= 0) return [];
+  if (numPlayers === 1) return [ellipsePoint(270)];
+  const raw = [];
+  for (let i = 0; i < numPlayers; i++) {
+    raw.push(ARC_START + (ARC_END - ARC_START) * i / (numPlayers - 1));
+  }
+  // Rotate so myPlayerIdx lands at center of arc (270° = bottom)
+  const centerIdx = Math.round((numPlayers - 1) / 2);
+  const rotateBy = ((myPlayerIdx - centerIdx) % numPlayers + numPlayers) % numPlayers;
+  const rotated = [...raw.slice(rotateBy), ...raw.slice(0, rotateBy)];
+  return rotated.map(ellipsePoint);
+}
+
+function ellipsePoint(deg) {
+  const rad = deg * Math.PI / 180;
+  // CSS y increases downward; subtract sin to flip y axis so 270° = bottom
+  return {
+    x: (TABLE_CX + SEAT_RX * Math.cos(rad)) * 100,
+    y: (TABLE_CY - SEAT_RY * Math.sin(rad)) * 100,
+  };
+}
+
+// ── Portrait detection ────────────────────────────────────────────────────────
+function isPortrait() {
+  return window.innerWidth < 768;
+}
 
 // ── Audio ─────────────────────────────────────────────────────────────────────
 let _audioCtx = null;
@@ -82,10 +111,50 @@ export function render(container, gameState, socket, playerId, hostPlayerId) {
   _prevBettingBuiltHand = -1;
   _prevIntermissionBuiltHand = -1;
   _actionBtnsForTurn = null;
+  _isPortrait = isPortrait();
   if (_countdownTimer) { clearInterval(_countdownTimer); _countdownTimer = null; }
   if (_resizeObserver) { _resizeObserver.disconnect(); _resizeObserver = null; }
 
-  // DOM structure: chip tray and intermission panel sit BELOW the table, not inside it
+  if (_isPortrait) {
+    buildPortraitDom(container);
+  } else {
+    buildLandscapeDom(container);
+  }
+
+  updateView(gameState, playerId, hostPlayerId, container, true);
+
+  // ResizeObserver: re-run updateView on resize; rebuild DOM on orientation change
+  if (window.ResizeObserver && container) {
+    _resizeObserver = new ResizeObserver(function() {
+      if (!_container || !_lastState) return;
+      const nowPortrait = isPortrait();
+      if (nowPortrait !== _isPortrait) {
+        _isPortrait = nowPortrait;
+        render(_container, _lastState, _socket, _myId, _hostId);
+        return;
+      }
+      updateView(_lastState, _myId, _hostId, _container, false);
+    });
+    _resizeObserver.observe(container);
+  }
+}
+
+export function update(gameState, playerId, hostPlayerId) {
+  _myId = playerId;
+  _hostId = hostPlayerId;
+  if (_container) updateView(gameState, playerId, hostPlayerId, _container, false);
+}
+
+export function destroy() {
+  if (_countdownTimer) clearInterval(_countdownTimer);
+  if (_resizeObserver) { _resizeObserver.disconnect(); _resizeObserver = null; }
+  _countdownTimer = null;
+  _container = null;
+  _lastState = null;
+}
+
+// ── DOM builders ──────────────────────────────────────────────────────────────
+function buildLandscapeDom(container) {
   container.innerHTML = `
     <div class="bj-layout">
       <div class="bj-table-wrap">
@@ -112,38 +181,43 @@ export function render(container, gameState, socket, playerId, hostPlayerId) {
       </div>
     </div>`;
 
-  // Mute toggle
   container.querySelector('#bj-mute-btn').addEventListener('click', function() {
     var nowMuted = !muted();
     localStorage.setItem('bj-muted', nowMuted ? '1' : '0');
     container.querySelector('#bj-mute-btn').textContent = nowMuted ? '🔇 Unmute' : '🔊 Mute';
     if (!nowMuted && _audioCtx) _audioCtx.resume();
   });
-
-  updateView(gameState, playerId, hostPlayerId, container, true);
-
-  // ResizeObserver: re-run updateView when table dimensions change (positions only)
-  var tableEl = container.querySelector('#bj-table');
-  if (window.ResizeObserver && tableEl) {
-    _resizeObserver = new ResizeObserver(function() {
-      if (_container && _lastState) updateView(_lastState, _myId, _hostId, _container, false);
-    });
-    _resizeObserver.observe(tableEl);
-  }
 }
 
-export function update(gameState, playerId, hostPlayerId) {
-  _myId = playerId;
-  _hostId = hostPlayerId;
-  if (_container) updateView(gameState, playerId, hostPlayerId, _container, false);
-}
+function buildPortraitDom(container) {
+  container.innerHTML = `
+    <div class="bj-mobile-layout">
+      <div class="bj-mobile-dealer">
+        <div style="font-size:0.7rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px">Dealer</div>
+        <div class="bj-cards" id="bj-dealer-cards" style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center;min-height:56px;align-items:flex-end"></div>
+        <div id="bj-dealer-total" style="font-size:0.85rem;margin-top:4px;font-weight:600;text-align:center;color:rgba(255,255,255,0.9)"></div>
+      </div>
+      <div class="bj-mobile-seats" id="bj-seats"></div>
+      <div class="bj-mobile-action">
+        <div id="bj-action-panel" style="display:none">
+          <div class="bj-action-btns" id="bj-action-btns" style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"></div>
+        </div>
+        <div id="bj-chip-tray" style="display:none"></div>
+        <div id="bj-intermission-panel" style="display:none"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+          <div id="bj-hand-num" style="font-size:0.72rem;color:var(--color-text-muted)"></div>
+          <button class="btn btn-secondary btn-sm" id="bj-mute-btn">${muted() ? '🔇 Unmute' : '🔊 Mute'}</button>
+        </div>
+        <div id="bj-score-rows" style="margin-top:6px;font-size:var(--font-size-sm)"></div>
+      </div>
+    </div>`;
 
-export function destroy() {
-  if (_countdownTimer) clearInterval(_countdownTimer);
-  if (_resizeObserver) { _resizeObserver.disconnect(); _resizeObserver = null; }
-  _countdownTimer = null;
-  _container = null;
-  _lastState = null;
+  container.querySelector('#bj-mute-btn').addEventListener('click', function() {
+    var nowMuted = !muted();
+    localStorage.setItem('bj-muted', nowMuted ? '1' : '0');
+    container.querySelector('#bj-mute-btn').textContent = nowMuted ? '🔇 Unmute' : '🔊 Mute';
+    if (!nowMuted && _audioCtx) _audioCtx.resume();
+  });
 }
 
 // ── Core update ───────────────────────────────────────────────────────────────
@@ -160,21 +234,19 @@ function updateView(state, myId, hostId, container, initial) {
     _prevHandLens = {};
     _prevSplitLens = {};
     _prevDealerHidden = true;
-    _actionBtnsForTurn = null;  // force rebuild for new hand's first turn
+    _actionBtnsForTurn = null;
   }
 
   // ── Dealer cards ──────────────────────────────────────────────────────────
   var dealerCardsEl = container.querySelector('#bj-dealer-cards');
   var dealerHand = state.dealerHand || [];
   var dealerLen = dealerHand.length;
-  // isNewFlip: hole card was hidden, now revealed — but only mid-hand (not on hand reset)
   var isNewFlip = _prevDealerHidden && !state.dealerHidden && !initial && !isNewHand;
 
   if (initial || isNewHand) {
     renderCards(dealerCardsEl, dealerHand, dealerLen, true);
   } else {
     if (isNewFlip) {
-      // Replace face-down hole card with face-up version + flip animation
       var existingCards = dealerCardsEl.querySelectorAll('.playing-card');
       if (existingCards[1] && dealerHand[1]) {
         var fTmp = document.createElement('div');
@@ -186,7 +258,6 @@ function updateView(state, myId, hostId, container, initial) {
         sfxCard();
       }
     }
-    // Append additional cards beyond what was already rendered
     var appendFrom = isNewFlip ? 2 : _prevDealerLen;
     if (dealerLen > appendFrom) {
       var extraCards = dealerHand.slice(appendFrom);
@@ -211,29 +282,29 @@ function updateView(state, myId, hostId, container, initial) {
   // ── Player seats ──────────────────────────────────────────────────────────
   var seatsEl = container.querySelector('#bj-seats');
   var players = state.players || [];
-  var numPlayers = Math.min(players.length, 6);
-  var positions = SEAT_ARCS[numPlayers] || SEAT_ARCS[1];
-
-  // Rotate players so local player is always at the center-bottom arc position
-  var CENTER_IDX = { 1: 0, 2: 0, 3: 1, 4: 1, 5: 2, 6: 2 };
-  var cIdx = CENTER_IDX[numPlayers] !== undefined ? CENTER_IDX[numPlayers] : 0;
+  var numPlayers = players.length;
   var myPlayerIdx = players.findIndex(function(p) { return p.id === myId; });
+  if (myPlayerIdx < 0) myPlayerIdx = 0;
+
+  // Rotate player array to match ellipse position array
   var orderedPlayers = players.slice();
-  if (myPlayerIdx >= 0 && myPlayerIdx !== cIdx && numPlayers > 1) {
-    var rotateBy = ((myPlayerIdx - cIdx) % numPlayers + numPlayers) % numPlayers;
-    orderedPlayers = orderedPlayers.slice(rotateBy).concat(orderedPlayers.slice(0, rotateBy));
+  var seatPositions = null;
+  if (!_isPortrait && numPlayers > 0) {
+    seatPositions = getSeatPositions(numPlayers, myPlayerIdx);
+    if (numPlayers > 1) {
+      var centerIdx = Math.round((numPlayers - 1) / 2);
+      var rotateBy = ((myPlayerIdx - centerIdx) % numPlayers + numPlayers) % numPlayers;
+      orderedPlayers = orderedPlayers.slice(rotateBy).concat(orderedPlayers.slice(0, rotateBy));
+    }
   }
 
   // Remove seats for players no longer in the game
   var currentPids = orderedPlayers.map(function(p) { return p.id; });
-  var orphanSeats = seatsEl.querySelectorAll('[data-pid]');
-  orphanSeats.forEach(function(el) {
+  seatsEl.querySelectorAll('[data-pid]').forEach(function(el) {
     if (currentPids.indexOf(el.dataset.pid) === -1) el.remove();
   });
 
   orderedPlayers.forEach(function(player, idx) {
-    var pos = positions[idx] || [50, 78];
-    var px = pos[0], py = pos[1];
     var pid = player.id;
     var isMe = pid === myId;
     var isCurrent = state.currentPlayerId === pid;
@@ -244,9 +315,9 @@ function updateView(state, myId, hostId, container, initial) {
     var splitLen = splitHand ? splitHand.length : 0;
     var status = (state.playerStatus && state.playerStatus[pid]) || '';
     var splitStatus = (state.splitStatus && state.splitStatus[pid]) || '';
-    var chips = state.chips && state.chips[pid];
-    var bet = state.bets && state.bets[pid];
-    var splitBet = state.splitBets && state.splitBets[pid];
+    var chips = state.chips && state.chips[pid] != null ? state.chips[pid] : null;
+    var bet = state.bets && state.bets[pid] != null ? state.bets[pid] : null;
+    var splitBet = state.splitBets && state.splitBets[pid] != null ? state.splitBets[pid] : null;
 
     var seatEl = seatsEl.querySelector('[data-pid="' + pid + '"]');
     if (!seatEl) {
@@ -254,28 +325,34 @@ function updateView(state, myId, hostId, container, initial) {
       seatEl.dataset.pid = pid;
       seatsEl.appendChild(seatEl);
     }
-    // Always update position (handles player count changes)
-    seatEl.style.left = px + '%';
-    seatEl.style.top = py + '%';
 
-    var cls = 'bj-seat';
-    if (isMe) cls += ' my-seat';
-    if (isCurrent) cls += ' active-seat';
-    if (isSittingOut) cls += ' sitting-out';
-    seatEl.className = cls;
+    if (_isPortrait) {
+      var cls = 'bj-mobile-seat';
+      if (isMe) cls += ' my-seat';
+      if (isCurrent) cls += ' active-seat';
+      seatEl.className = cls;
+      seatEl.style.cssText = '';
+    } else {
+      var pos = seatPositions && seatPositions[idx] ? seatPositions[idx] : { x: 50, y: 78 };
+      seatEl.style.left = pos.x + '%';
+      seatEl.style.top = pos.y + '%';
+      var cls = 'bj-seat';
+      if (isMe) cls += ' my-seat';
+      if (isCurrent) cls += ' active-seat';
+      if (isSittingOut) cls += ' sitting-out';
+      seatEl.className = cls;
+    }
 
     var prevLen = _prevHandLens[pid] != null ? _prevHandLens[pid] : 0;
     var prevSplitLen = _prevSplitLens[pid] != null ? _prevSplitLens[pid] : 0;
 
-    // Only play deal sounds on genuine new cards (not new-hand initial render)
     if (!initial && !isNewHand && handLen > prevLen) sfxCard();
     if (!initial && !isNewHand && splitLen > prevSplitLen) setTimeout(sfxCard, 150);
 
     var total = handTotal(hand);
     var totalColor = total > 21 ? '#f87171' : total === 21 ? '#4ade80' : 'rgba(255,255,255,0.92)';
 
-    var resultForThis = null;
-    var splitResultForThis = null;
+    var resultForThis = null, splitResultForThis = null;
     if (state.lastHandResults) {
       for (var ri = 0; ri < state.lastHandResults.length; ri++) {
         var r = state.lastHandResults[ri];
@@ -310,15 +387,17 @@ function updateView(state, myId, hostId, container, initial) {
         + '<div class="bj-seat-total">' + statusText(splitStatus, splitTotal) + '</div>';
     }
 
-    var chipsHtml = (state.enableChips && chips != null)
+    var chipsHtml = chips != null
       ? '<div class="bj-chips">\uD83D\uDCB0 ' + chips + '</div>'
       : '';
-    var betHtml = (state.enableChips && bet != null)
+    var betHtml = bet != null
       ? '<div class="bj-bet">' + chipStackHtml(bet) + ' ' + bet + (splitBet != null ? ' / ' + splitBet : '') + '</div>'
       : '';
-    // Show "sitting out" label for players who have no cards (e.g. during betting or intermission)
     var sittingOutHtml = (isSittingOut && hand.length === 0)
       ? '<div style="font-size:0.62rem;color:rgba(255,255,255,0.45);margin-top:3px;font-style:italic">sitting out</div>'
+      : '';
+    var buyInHint = (!isSittingOut && chips === 0 && hand.length === 0)
+      ? '<div style="font-size:0.62rem;color:#fde68a;margin-top:3px;font-style:italic">needs buy-in</div>'
       : '';
 
     seatEl.innerHTML = '<div class="bj-seat-name">' + escHtml(player.displayName || pid) + '</div>'
@@ -326,7 +405,7 @@ function updateView(state, myId, hostId, container, initial) {
       + '<div class="bj-seat-total" style="color:' + totalColor + '">'
       + (hand.length ? statusText(status, total) : '') + '</div>'
       + splitSection
-      + sittingOutHtml
+      + sittingOutHtml + buyInHint
       + chipsHtml + betHtml;
   });
 
@@ -340,7 +419,7 @@ function updateView(state, myId, hostId, container, initial) {
   });
 
   // ── Chip delta animations ─────────────────────────────────────────────────
-  if (state.enableChips && state.chips) {
+  if (state.chips) {
     Object.keys(state.chips).forEach(function(pid) {
       var chipVal = state.chips[pid];
       var prev = _prevChips[pid];
@@ -385,8 +464,8 @@ function updateView(state, myId, hostId, container, initial) {
   if (scoreRowsEl && state.sessionScores) {
     scoreRowsEl.innerHTML = players.map(function(p) {
       var sc = state.sessionScores[p.id] || { wins: 0, losses: 0, pushes: 0 };
-      var chipStr = (state.enableChips && state.chips)
-        ? ' \uD83D\uDCB0' + (state.chips[p.id] != null ? state.chips[p.id] : state.startingChips)
+      var chipStr = (state.chips && state.chips[p.id] != null)
+        ? ' \uD83D\uDCB0' + state.chips[p.id]
         : '';
       return '<div class="bj-score-row">'
         + '<span class="bj-score-name" title="' + escHtml(p.displayName) + '">' + escHtml(p.displayName || p.id) + '</span>'
@@ -399,33 +478,48 @@ function updateView(state, myId, hostId, container, initial) {
   var actionPanel = container.querySelector('#bj-action-panel');
   var chipTray = container.querySelector('#bj-chip-tray');
   var intermissionPanel = container.querySelector('#bj-intermission-panel');
+  var myChips = state.chips && state.chips[myId] != null ? state.chips[myId] : null;
 
   if (state.phase === 'intermission') {
-    // Hide action panel and chip tray — keep table fully visible
     actionPanel.style.display = 'none';
     chipTray.style.display = 'none';
 
-    // Build intermission panel once per hand (prevents listener accumulation)
     if (state.handNumber !== _prevIntermissionBuiltHand) {
       _prevIntermissionBuiltHand = state.handNumber;
       buildIntermissionPanel(intermissionPanel, state, myId, hostId);
-      startCountdown(intermissionPanel, state.intermissionEndsAt);
     } else {
-      // Just update the sit-out button toggle state
+      // Update dynamic elements without rebuilding
       var sitBtn = intermissionPanel.querySelector('[data-action="sit-out"]');
       if (sitBtn) {
         var nowSitting = (state.sittingOut || []).indexOf(myId) !== -1;
         sitBtn.dataset.sitting = nowSitting ? '1' : '0';
         sitBtn.textContent = nowSitting ? '\u25BA Sit In' : '\uD83D\uDCA4 Sit Out';
       }
+      var readyBtn = intermissionPanel.querySelector('[data-action="ready"]');
+      if (readyBtn) {
+        var isReady = (state.readyPlayers || []).indexOf(myId) !== -1;
+        readyBtn.disabled = isReady;
+        readyBtn.textContent = isReady ? '\u2713 Ready' : 'Ready';
+        readyBtn.className = isReady ? 'btn btn-secondary btn-sm' : 'btn btn-primary btn-sm';
+      }
+      updateWaitingFor(intermissionPanel, state, myId);
     }
     intermissionPanel.style.display = '';
 
   } else {
     intermissionPanel.style.display = 'none';
 
-    if (state.phase === 'betting' && myId && (state.bets == null || state.bets[myId] === undefined)) {
-      // Show chip tray for this player to place bet — build once per hand
+    if (state.phase === 'betting' && myId && myChips === 0) {
+      // 0-chip player — show buy-in panel
+      actionPanel.style.display = 'none';
+      if (state.handNumber !== _prevBettingBuiltHand) {
+        _prevBettingBuiltHand = state.handNumber;
+        buildBuyInTray(chipTray, state, myId);
+      }
+      chipTray.style.display = '';
+
+    } else if (state.phase === 'betting' && myId && (state.bets == null || state.bets[myId] === undefined)) {
+      // Show chip tray for betting — build once per hand
       actionPanel.style.display = 'none';
       if (state.handNumber !== _prevBettingBuiltHand) {
         _prevBettingBuiltHand = state.handNumber;
@@ -435,7 +529,6 @@ function updateView(state, myId, hostId, container, initial) {
       chipTray.style.display = '';
 
     } else if (state.phase === 'playing' && state.currentPlayerId === myId) {
-      // Only show action buttons if this player's hand is not yet finished
       var myStatus = (state.playerStatus && state.playerStatus[myId]) || '';
       var myHandDone = myStatus === 'bust' || myStatus === 'stand'
         || myStatus === 'double' || myStatus === 'blackjack';
@@ -444,7 +537,6 @@ function updateView(state, myId, hostId, container, initial) {
 
       if (!myHandDone) {
         actionPanel.style.display = '';
-        // Build action buttons once per "turn" — key changes on player/hand/split switch
         var turnKey = (state.currentPlayerId || '') + ':' + (state.handNumber || 0)
           + ':' + ((state.activeHand && state.activeHand[myId]) || 'main');
         if (_actionBtnsForTurn !== turnKey) {
@@ -462,9 +554,12 @@ function updateView(state, myId, hostId, container, initial) {
   }
 }
 
-// ── Intermission panel (below table, not overlaid) ────────────────────────────
+// ── Intermission panel ────────────────────────────────────────────────────────
 function buildIntermissionPanel(el, state, myId, hostId) {
   var isSittingOut = (state.sittingOut || []).indexOf(myId) !== -1;
+  var isReady = (state.readyPlayers || []).indexOf(myId) !== -1;
+  var myChips = state.chips && state.chips[myId] != null ? state.chips[myId] : 0;
+  var canBuyIn = myChips === 0;
 
   var resultChips = '';
   if (state.lastHandResults) {
@@ -475,8 +570,8 @@ function buildIntermissionPanel(el, state, myId, hostId) {
       }
       var name = escHtml(player ? player.displayName : r.playerId);
       var handLabel = r.hand === 'split' ? ' (split)' : '';
-      var bet = state.bets && state.bets[r.playerId];
-      var chipChange = (state.enableChips && bet != null)
+      var bet = state.bets && state.bets[r.playerId] != null ? state.bets[r.playerId] : null;
+      var chipChange = bet != null
         ? ' ' + (r.result === 'win' ? '+' : r.result === 'push' ? '\u00B1' : '-') + bet
         : '';
       var bg = r.result === 'win' ? '#166534' : r.result === 'push' ? '#374151' : '#7f1d1d';
@@ -490,6 +585,16 @@ function buildIntermissionPanel(el, state, myId, hostId) {
     ? '<button class="btn btn-danger btn-sm" data-action="end-game" style="margin-left:4px">End Game</button>'
     : '';
 
+  var actionBtn;
+  if (canBuyIn) {
+    actionBtn = '<button class="btn btn-success btn-sm" data-action="buy-in">Buy In (' + (state.buyIn || 1000) + ')</button>';
+  } else {
+    actionBtn = '<button class="btn btn-' + (isReady ? 'secondary' : 'primary') + ' btn-sm" data-action="ready"'
+      + (isReady ? ' disabled' : '') + '>' + (isReady ? '\u2713 Ready' : 'Ready') + '</button>';
+  }
+
+  var waitingText = getWaitingForText(state, myId);
+
   el.innerHTML = '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:10px 16px;'
     + 'background:var(--color-bg-card);border-top:1px solid var(--color-border);'
     + 'border-radius:0 0 var(--radius-md,8px) var(--radius-md,8px)">'
@@ -497,7 +602,8 @@ function buildIntermissionPanel(el, state, myId, hostId) {
     + (resultChips || '<span style="color:var(--color-text-secondary);font-size:0.85rem">\u2014</span>')
     + '</div>'
     + '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">'
-    + '<span style="font-size:0.82rem;color:var(--color-text-secondary)">Next in <strong id="bj-countdown">5</strong>s</span>'
+    + '<span id="bj-waiting-for" style="font-size:0.75rem;color:var(--color-text-muted)">' + waitingText + '</span>'
+    + actionBtn
     + '<button class="btn btn-secondary btn-sm" data-action="sit-out" data-sitting="' + (isSittingOut ? '1' : '0') + '">'
     + (isSittingOut ? '\u25BA Sit In' : '\uD83D\uDCA4 Sit Out') + '</button>'
     + endGameBtn
@@ -509,7 +615,11 @@ function buildIntermissionPanel(el, state, myId, hostId) {
     if (!btn) return;
     var action = btn.dataset.action;
     var sessionId = _socket.currentSessionId;
-    if (action === 'sit-out') {
+    if (action === 'ready') {
+      _socket.emit('game:action', { sessionId: sessionId, action: { type: 'ready' } });
+    } else if (action === 'buy-in') {
+      _socket.emit('game:action', { sessionId: sessionId, action: { type: 'buy_in' } });
+    } else if (action === 'sit-out') {
       var isSitting = btn.dataset.sitting === '1';
       _socket.emit('game:action', { sessionId: sessionId, action: { type: isSitting ? 'sit_in' : 'sit_out' } });
     } else if (action === 'end-game') {
@@ -518,17 +628,37 @@ function buildIntermissionPanel(el, state, myId, hostId) {
   });
 }
 
-function startCountdown(el, endsAt) {
-  if (_countdownTimer) clearInterval(_countdownTimer);
-  function tick() {
-    var countEl = el ? el.querySelector('#bj-countdown') : null;
-    if (!countEl) { clearInterval(_countdownTimer); return; }
-    var secs = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
-    countEl.textContent = secs;
-    if (secs <= 0) clearInterval(_countdownTimer);
-  }
-  tick();
-  _countdownTimer = setInterval(tick, 500);
+function getWaitingForText(state, myId) {
+  if (!state.readyPlayers) return '';
+  var activePlayers = (state.players || []).filter(function(p) {
+    return !p.is_bot && (state.sittingOut || []).indexOf(p.id) === -1;
+  });
+  var notReady = activePlayers.filter(function(p) {
+    return (state.readyPlayers || []).indexOf(p.id) === -1;
+  });
+  if (notReady.length === 0) return '';
+  return 'Waiting for ' + notReady.map(function(p) { return escHtml(p.displayName || p.id); }).join(', ');
+}
+
+function updateWaitingFor(el, state, myId) {
+  var span = el.querySelector('#bj-waiting-for');
+  if (span) span.textContent = getWaitingForText(state, myId);
+}
+
+// ── Buy-in tray (0-chip player during betting) ────────────────────────────────
+function buildBuyInTray(el, state, myId) {
+  var buyIn = state.buyIn || 1000;
+  el.innerHTML = '<div class="bj-buy-in-panel">'
+    + '<div style="font-size:0.85rem;color:var(--color-text-secondary);margin-bottom:4px">'
+    + 'You need chips to play this hand.</div>'
+    + '<button class="btn btn-success" data-action="buy-in">Buy In (' + buyIn + ' chips)</button>'
+    + '</div>';
+
+  el.addEventListener('click', function(e) {
+    var btn = e.target.closest('[data-action="buy-in"]');
+    if (!btn) return;
+    _socket.emit('game:action', { sessionId: _socket.currentSessionId, action: { type: 'buy_in' } });
+  });
 }
 
 // ── Action buttons ────────────────────────────────────────────────────────────
@@ -541,9 +671,9 @@ function buildActionBtns(el, state, myId) {
     ? (state.splitBets && state.splitBets[myId] != null ? state.splitBets[myId] : 0)
     : (state.bets && state.bets[myId] != null ? state.bets[myId] : 0);
 
-  var canDouble = state.enableChips && currentHand.length === 2 && chips >= bet;
+  var canDouble = currentHand.length === 2 && chips >= bet;
   var hasSplit = state.splitHands && state.splitHands[myId];
-  var canSplit = state.enableChips && !hasSplit && myHand.length === 2
+  var canSplit = !hasSplit && myHand.length === 2
     && cardValue2(myHand[0]) === cardValue2(myHand[1])
     && chips >= (state.bets && state.bets[myId] != null ? state.bets[myId] : 0);
 
@@ -561,7 +691,6 @@ function buildActionBtns(el, state, myId) {
     if (act === 'stand')  _socket.emit('game:action', { sessionId: sessionId, action: { type: 'stand' } });
     if (act === 'double') _socket.emit('game:action', { sessionId: sessionId, action: { type: 'double_down' } });
     if (act === 'split')  _socket.emit('game:action', { sessionId: sessionId, action: { type: 'split' } });
-    // Remove this handler — server response will trigger a fresh rebuild
     el.removeEventListener('click', handler);
     _actionBtnsForTurn = null;
   });

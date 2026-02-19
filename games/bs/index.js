@@ -272,6 +272,8 @@ function getPostGameSummary(state, results) {
   });
 }
 
+function getSetupConfig() { return []; }
+
 module.exports = {
   version,
   initGame,
@@ -281,4 +283,5 @@ module.exports = {
   isGameOver,
   getBotAction,
   getPostGameSummary,
+  getSetupConfig,
 };

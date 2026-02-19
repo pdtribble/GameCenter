@@ -333,6 +333,14 @@ function getPostGameSummary(state, results) {
   return summary;
 }
 
+function getSetupConfig() {
+  return [
+    { key: 'smallBlind',    type: 'number', label: 'Small Blind',    default: 10,   min: 1 },
+    { key: 'bigBlind',      type: 'number', label: 'Big Blind',      default: 20,   min: 2 },
+    { key: 'startingChips', type: 'number', label: 'Starting Chips', default: 1000, min: 100 },
+  ];
+}
+
 module.exports = {
   version,
   initGame,
@@ -342,4 +350,5 @@ module.exports = {
   isGameOver,
   getBotAction,
   getPostGameSummary,
+  getSetupConfig,
 };

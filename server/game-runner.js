@@ -13,8 +13,8 @@ const activeSessions = new Map();
 const emitDebounce = new Map();
 const EMIT_MIN_INTERVAL_MS = Math.floor(1000 / 30); // max 30/sec
 
-// Phase-transition timers (intermission → deal_next, betting → auto_bet)
-const intermissionTimers = new Map(); // sessionId -> timeoutId
+// Phase-transition timers
+const intermissionTimers = new Map(); // sessionId -> timeoutId (30s AFK guard)
 const bettingTimers = new Map();      // sessionId -> timeoutId
 
 // ── Module loader ─────────────────────────────────────────────────────────────
@@ -173,13 +173,33 @@ function handleActionInternal(io, sessionId, playerId, action) {
 
   const st = session.state;
 
-  // Schedule intermission → deal_next timer
-  if (st.phase === 'intermission' && st.intermissionEndsAt && !intermissionTimers.has(sessionId)) {
-    const delay = Math.max(0, st.intermissionEndsAt - Date.now());
-    intermissionTimers.set(sessionId, setTimeout(() => {
-      intermissionTimers.delete(sessionId);
-      handleActionInternal(io, sessionId, '__system__', { type: 'deal_next' });
-    }, delay));
+  // ── Intermission phase handling ──────────────────────────────────────────────
+  if (st.phase === 'intermission') {
+    // Clear intermission timer if already set (state just transitioned to intermission)
+    // and start a fresh 30-second AFK guard
+    if (!intermissionTimers.has(sessionId)) {
+      intermissionTimers.set(sessionId, setTimeout(() => {
+        intermissionTimers.delete(sessionId);
+        handleActionInternal(io, sessionId, '__system__', { type: 'intermission_timeout' });
+      }, 30000));
+    }
+
+    // Schedule bot auto-ready
+    for (const player of session.players.filter(p => p.is_bot)) {
+      const pid = player.id;
+      setTimeout(() => {
+        const s = activeSessions.get(sessionId);
+        if (s && s.state.phase === 'intermission' && !(s.state.readyPlayers || []).includes(pid)) {
+          handleActionInternal(io, sessionId, pid, { type: 'ready' });
+        }
+      }, 500 + Math.random() * 500);
+    }
+  }
+
+  // Clear intermission timer when phase moves away from intermission
+  if (st.phase !== 'intermission' && intermissionTimers.has(sessionId)) {
+    clearTimeout(intermissionTimers.get(sessionId));
+    intermissionTimers.delete(sessionId);
   }
 
   // Schedule betting → auto_bet timer
@@ -193,11 +213,11 @@ function handleActionInternal(io, sessionId, playerId, action) {
 
   // Schedule immediate bot bets when in betting phase
   if (st.phase === 'betting') {
-    for (const player of session.players.filter(p => p.is_bot && st.bets[p.id] === undefined)) {
+    for (const player of session.players.filter(p => p.is_bot && (st.bets == null || st.bets[p.id] === undefined))) {
       const pid = player.id;
       setTimeout(() => {
         const s = activeSessions.get(sessionId);
-        if (s && s.state.phase === 'betting' && s.state.bets[pid] === undefined) {
+        if (s && s.state.phase === 'betting' && (s.state.bets == null || s.state.bets[pid] === undefined)) {
           handleActionInternal(io, sessionId, pid, { type: 'bet', amount: 10 });
         }
       }, 800 + Math.random() * 700);
@@ -242,7 +262,6 @@ function doEmitGameState(io, sessionId, session) {
     for (const s of sockets) s.emit('server:game_state', { state: playerState });
   }
 
-  // Spectators get a state with null playerId (no hidden info)
   const specState = mod.getState(state, null);
   for (const spec of spectators || []) {
     const sockets = findSocketsByPlayerId(io, spec.id);
@@ -312,25 +331,64 @@ function handleChat(socket, io, data) {
   });
 }
 
-// ── Post-game handlers ────────────────────────────────────────────────────────
+// ── Post-game stubs (rematch removed from client) ─────────────────────────────
 function handleRematch(socket, io, data) {
-  // Simple: create a new lobby with the same settings
-  const { sessionId } = data || {};
-  const sessionRow = db.prepare('SELECT * FROM game_sessions WHERE id = ?').get(sessionId);
-  if (!sessionRow) return;
-
-  const lobby = db.prepare('SELECT * FROM lobbies WHERE id = ?').get(sessionRow.lobby_id);
-  if (!lobby) return;
-
-  const lobbyManager = require('./lobby-manager');
-  // Emit to original room players to rejoin
-  io.to(`session:${sessionId}`).emit('server:announcement', {
-    message: 'Rematch starting — creating new lobby...',
-  });
+  // No-op: rematch system removed
 }
 
 function handleNewLobby(socket, io, data) {
   socket.emit('server:announcement', { message: 'Create or join a new lobby from the home screen.' });
+}
+
+// ── Mid-round join (player joins an active game) ──────────────────────────────
+function handleMidJoin(socket, io, sessionId) {
+  const session = activeSessions.get(sessionId);
+  if (!session) return;
+
+  const playerId = socket.playerId;
+
+  // Add to session.players if not already there
+  if (!session.players.some(p => p.id === playerId)) {
+    const player = db.prepare('SELECT * FROM players WHERE id = ?').get(playerId);
+    if (!player) return;
+
+    const playerEntry = {
+      id: playerId,
+      display_name: player.display_name,
+      displayName: player.display_name,
+      is_bot: 0,
+      role: 'player',
+    };
+    session.players.push(playerEntry);
+
+    // Update game state
+    if (!session.state.players.some(p => p.id === playerId)) {
+      session.state.players.push({ id: playerId, displayName: player.display_name, is_bot: false });
+    }
+    if (!session.state.sittingOut.includes(playerId)) {
+      session.state.sittingOut.push(playerId);
+    }
+    if (session.state.chips) {
+      session.state.chips[playerId] = 0;
+    }
+    if (session.state.sessionScores) {
+      session.state.sessionScores[playerId] = { wins: 0, losses: 0, pushes: 0 };
+    }
+  }
+
+  const lobbyRow = db.prepare('SELECT join_code, host_player_id FROM lobbies WHERE id = ?').get(session.lobbyId);
+
+  socket.join(`session:${sessionId}`);
+  socket.currentSessionId = sessionId;
+  socket.emit('server:game_started', {
+    sessionId,
+    state: session.module.getState(session.state, playerId),
+    joinCode: lobbyRow?.join_code || null,
+    hostPlayerId: lobbyRow?.host_player_id || null,
+  });
+
+  // Broadcast updated state to all players in the session
+  emitGameState(io, sessionId, session);
 }
 
 // ── Force end (admin) ─────────────────────────────────────────────────────────
@@ -399,4 +457,5 @@ module.exports = {
   forceEndSession,
   getActiveSessions,
   handleRejoin,
+  handleMidJoin,
 };
