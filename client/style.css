@@ -872,6 +872,119 @@ a:hover { color: var(--color-accent-hover); }
   text-align: center;
 }
 
+/* ── Buy-in panel ───────────────────────────────────────────────────────────── */
+.bj-buy-in-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+  background: var(--color-bg-card);
+  border-top: 1px solid var(--color-border);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  text-align: center;
+}
+
+/* ── Mobile / Portrait blackjack layout ─────────────────────────────────────── */
+.bj-mobile-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.bj-mobile-dealer {
+  background: radial-gradient(ellipse at 50% 100%, #2d9e44 0%, #1a6b2f 60%, #145a26 100%);
+  border-bottom: 4px solid #5c3317;
+  padding: 10px 12px 8px;
+  text-align: center;
+  color: rgba(255,255,255,0.92);
+  flex-shrink: 0;
+}
+
+.bj-mobile-seats {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: var(--color-bg-secondary);
+}
+
+.bj-mobile-action {
+  flex-shrink: 0;
+  background: var(--color-bg-card);
+  border-top: 1px solid var(--color-border);
+  padding: 8px 12px;
+}
+
+/* Individual seat card in mobile view */
+.bj-mobile-seat {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+}
+.bj-mobile-seat .bj-seat-name {
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 80px;
+  flex-shrink: 0;
+}
+.bj-mobile-seat .bj-cards {
+  display: flex;
+  gap: 3px;
+  align-items: flex-end;
+  flex: 1;
+  min-height: 44px;
+}
+.bj-mobile-seat .bj-seat-total {
+  font-size: 0.72rem;
+  font-weight: 600;
+  flex-shrink: 0;
+  min-width: 42px;
+  text-align: right;
+}
+.bj-mobile-seat .bj-chips {
+  font-size: 0.65rem;
+  color: rgba(253,230,138,0.9);
+  white-space: nowrap;
+}
+.bj-mobile-seat .bj-bet {
+  font-size: 0.65rem;
+  color: rgba(251,191,36,0.85);
+  white-space: nowrap;
+}
+.bj-mobile-seat.my-seat {
+  border-color: var(--color-accent);
+  background: rgba(99,102,241,0.08);
+}
+.bj-mobile-seat.my-seat .bj-seat-name { color: var(--color-accent); }
+.bj-mobile-seat.active-seat {
+  border-color: #fbbf24;
+  box-shadow: 0 0 0 2px rgba(251,191,36,0.25);
+}
+.bj-mobile-seat.active-seat .bj-seat-name::after { content: ' ▶'; color: #fbbf24; }
+
+/* Smaller cards inside mobile seats */
+.bj-mobile-seat .playing-card {
+  width: 32px;
+  height: 44px;
+  font-size: 0.65rem;
+  border-width: 1px;
+}
+.bj-mobile-seat .playing-card .card-rank { font-size: 0.72rem; }
+.bj-mobile-seat .playing-card .card-suit { font-size: 0.6rem; }
+
 /* ── In-game join code pill ─────────────────────────────────────────────────── */
 .game-join-code {
   font-size: 0.72rem;

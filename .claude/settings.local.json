@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \" import sys, json for line in sys.stdin: line = line.strip\\(\\) if not line: continue try: obj = json.loads\\(line\\) role = obj.get\\(''role'', ''''\\) content = obj.get\\(''content'', ''''\\) if isinstance\\(content, list\\): for item in content: if isinstance\\(item, dict\\) and item.get\\(''type''\\) == ''text'': print\\(f''[{role}]: {item[\"\"text\"\"][:500]}''\\) elif isinstance\\(content, str\\): print\\(f''[{role}]: {content[:500]}''\\) except: pass \")",
+      "Bash(python3 -c \" import sys, json for line in sys.stdin: line = line.strip\\(\\) if not line: continue try: obj = json.loads\\(line\\) role = obj.get\\(''role'', ''''\\) content = obj.get\\(''content'', ''''\\) msg_type = obj.get\\(''type'', ''''\\) if msg_type == ''summary'': print\\(''[SUMMARY]:'', str\\(content\\)[:2000]\\) elif isinstance\\(content, list\\): for item in content: if isinstance\\(item, dict\\) and item.get\\(''type''\\) == ''text'': print\\(f''[{role}]: {item[\"\"text\"\"][:1000]}''\\) elif isinstance\\(content, str\\) and content.strip\\(\\): print\\(f''[{role}]: {content[:1000]}''\\) except Exception as e: pass \")",
+      "Bash(python3:*)"
+    ]
+  }
+}
