@@ -63,6 +63,92 @@ router.get('/api/games', (req, res) => {
   res.json(games);
 });
 
+// GET /api/lobbies — list open lobbies for the lobby browser
+router.get('/api/lobbies', (req, res) => {
+  try {
+    const lobbies = db.prepare(`
+      SELECT
+        l.id, l.join_code, l.game_type, l.status,
+        p.display_name AS host_name,
+        COUNT(lp.player_id) AS player_count
+      FROM lobbies l
+      LEFT JOIN players p ON p.id = l.host_player_id
+      LEFT JOIN lobby_players lp ON lp.lobby_id = l.id AND lp.role = 'player'
+      WHERE l.status = 'waiting'
+      GROUP BY l.id
+      ORDER BY l.created_at DESC
+      LIMIT 50
+    `).all();
+
+    const gameRegs = db.prepare('SELECT game_type, max_players FROM game_registry').all();
+    const maxByType = {};
+    for (const g of gameRegs) maxByType[g.game_type] = g.max_players;
+
+    // Augment with module metadata
+    const result = lobbies.map(row => {
+      let maxPlayers = maxByType[row.game_type] || 8;
+      let label = row.game_type;
+      try {
+        const mod = require(require('path').join(__dirname, '../../games', row.game_type, 'index.js'));
+        maxPlayers = mod.maxPlayers || maxPlayers;
+        label = mod.name || label;
+      } catch (_e) {}
+      return {
+        id: row.id,
+        joinCode: row.join_code,
+        gameType: row.game_type,
+        gameLabel: label,
+        hostName: row.host_name || 'Unknown',
+        playerCount: row.player_count || 0,
+        maxPlayers,
+        status: row.status,
+      };
+    });
+
+    res.json(result);
+  } catch (err) {
+    console.error('[api/lobbies]', err);
+    res.json([]);
+  }
+});
+
+// GET /api/me/stats — current player stats from session cookie
+router.get('/api/me/stats', (req, res) => {
+  const io = req.app.get('io');
+  const onlineCount = io ? io.sockets.sockets.size : 0;
+
+  const playerId = req.cookies?.gc_session;
+  if (!playerId) {
+    return res.json({ loggedIn: false, onlineCount });
+  }
+
+  try {
+    const player = db.prepare('SELECT id, display_name, avatar_emoji, avatar_color FROM players WHERE id = ?').get(playerId);
+    if (!player) return res.json({ loggedIn: false, onlineCount });
+
+    const stats = db.prepare(`
+      SELECT
+        COUNT(*) AS games_played,
+        SUM(CASE WHEN result = 'win' THEN 1 ELSE 0 END) AS wins
+      FROM game_results WHERE player_id = ?
+    `).get(playerId);
+
+    res.json({
+      loggedIn: true,
+      playerId: player.id,
+      displayName: player.display_name,
+      avatarEmoji: player.avatar_emoji || '🎮',
+      avatarColor: player.avatar_color || '#6366f1',
+      gamesPlayed: stats?.games_played || 0,
+      wins: stats?.wins || 0,
+      onlineCount,
+    });
+  } catch (err) {
+    console.error('[api/me/stats]', err);
+    res.json({ loggedIn: false, onlineCount });
+  }
+});
+
 // POST /api/sync — receive sync records from Pi
 router.post('/api/sync', (req, res) => {
   const apiKey = req.headers['x-sync-key'];

@@ -6,7 +6,9 @@
       "Bash(python3:*)",
       "Bash(git rm:*)",
       "Bash(node -e:*)",
-      "Bash(node --check:*)"
+      "Bash(node --check:*)",
+      "Bash(\"C:/Users/Ptribble/Desktop/GameCenter/client/style.css\":*)",
+      "Bash(node:*)"
     ]
   }
 }

@@ -23,6 +23,8 @@ function applyScale() {
   root.style.left = Math.round((window.innerWidth  - baseW * scale) / 2) + 'px';
   root.style.top  = Math.round((window.innerHeight - baseH * scale) / 2) + 'px';
   document.documentElement.dataset.layout = portrait ? 'portrait' : 'landscape';
+  document.body.classList.toggle('layout-phone', portrait);
+  document.body.classList.toggle('layout-web', !portrait);
 }
 
 window.addEventListener('resize', applyScale);
