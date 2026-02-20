@@ -1,7 +1,6 @@
 // Home view — landing, login, guest mode, create/join lobby
 
 export function renderHome(container, socket, state, navigate) {
-  // Pre-fill join code from URL if present
   const params = new URLSearchParams(location.search);
   const prefillCode = params.get('join') || '';
 
@@ -32,12 +31,10 @@ export function renderHome(container, socket, state, navigate) {
           <div class="form-group">
             <label for="input-game-type">Game</label>
             <select class="input" id="input-game-type">
-              <option value="blackjack">Blackjack</option>
-              <option value="poker">Texas Hold'em Poker</option>
-              <option value="bs">BS (Cheat)</option>
-              <option value="game_night">🌙 Game Night (multi-game)</option>
+              <option value="" disabled selected>Loading games...</option>
             </select>
           </div>
+          <div id="bot-fill-info" class="text-muted" style="font-size:var(--font-size-sm);margin-bottom:var(--spacing-sm);display:none"></div>
           <div id="game-settings-fields"></div>
           <button class="btn btn-primary btn-full" id="btn-create">Create Lobby</button>
         </div>
@@ -56,14 +53,9 @@ export function renderHome(container, socket, state, navigate) {
             <button class="btn btn-primary btn-full" id="btn-join">Join</button>
           </div>
         </div>
-
-        <div style="display:flex;gap:var(--spacing-sm);justify-content:center">
-          <button class="btn btn-secondary btn-sm" id="btn-leaderboard">🏆 Leaderboard</button>
-        </div>
       </div>
     </div>`;
 
-  // Clear URL params
   if (prefillCode) history.replaceState({}, '', '/');
 
   const nameInput = container.querySelector('#input-name');
@@ -73,18 +65,41 @@ export function renderHome(container, socket, state, navigate) {
   const authError = container.querySelector('#auth-error');
   const joinError = container.querySelector('#join-error');
   const settingsFields = container.querySelector('#game-settings-fields');
+  const botFillInfo = container.querySelector('#bot-fill-info');
 
-  // Fetched game configs cache: gameType -> config[]
   let gameConfigs = {};
+  let gameMeta = {};
 
-  // Fetch /api/games and populate setting fields
   fetch('/api/games')
     .then(r => r.json())
     .then(games => {
-      for (const g of games) gameConfigs[g.gameType] = g.config || [];
-      renderSettingsFields(gameTypeSelect.value);
+      if (!games || games.length === 0) {
+        gameTypeSelect.innerHTML = '<option value="" disabled>No games available</option>';
+        return;
+      }
+      gameTypeSelect.innerHTML = games.map(g =>
+        `<option value="${escHtml(g.gameType)}">${escHtml(g.label)}</option>`
+      ).join('');
+      for (const g of games) {
+        gameConfigs[g.gameType] = g.config || [];
+        gameMeta[g.gameType] = g;
+      }
+      renderSettingsFields(games[0].gameType);
+      updateBotFillInfo(games[0].gameType);
     })
-    .catch(() => { /* silent fail — settings just won't render */ });
+    .catch(() => {
+      gameTypeSelect.innerHTML = '<option value="" disabled>Failed to load games</option>';
+    });
+
+  function updateBotFillInfo(gameType) {
+    const meta = gameMeta[gameType];
+    if (meta && meta.botFillAllowed) {
+      botFillInfo.textContent = `Bots will fill automatically to reach ${meta.botFillMin} players minimum.`;
+      botFillInfo.style.display = 'block';
+    } else {
+      botFillInfo.style.display = 'none';
+    }
+  }
 
   function renderSettingsFields(gameType) {
     const config = gameConfigs[gameType] || [];
@@ -95,12 +110,12 @@ export function renderHome(container, socket, state, navigate) {
         return `<div class="form-group">
           <label>${escHtml(field.label)}</label>
           <input class="input" id="gs-${escHtml(field.key)}" type="number"
-            value="${field.default || 0}" min="${field.min || 0}" step="${field.step || 1}">
+            value="${field.default ?? 0}" min="${field.min ?? 0}" step="${field.step || 1}">
         </div>`;
       }
       if (field.type === 'select') {
         const opts = (field.options || []).map(v =>
-          `<option value="${v}"${v === field.default ? ' selected' : ''}>${v}</option>`
+          `<option value="${escHtml(v)}"${v === field.default ? ' selected' : ''}>${escHtml(v)}</option>`
         ).join('');
         return `<div class="form-group">
           <label>${escHtml(field.label)}</label>
@@ -130,7 +145,10 @@ export function renderHome(container, socket, state, navigate) {
     return settings;
   }
 
-  gameTypeSelect.addEventListener('change', () => renderSettingsFields(gameTypeSelect.value));
+  gameTypeSelect.addEventListener('change', () => {
+    renderSettingsFields(gameTypeSelect.value);
+    updateBotFillInfo(gameTypeSelect.value);
+  });
 
   joinCodeInput.addEventListener('input', () => {
     joinCodeInput.value = joinCodeInput.value.toUpperCase();
@@ -138,21 +156,20 @@ export function renderHome(container, socket, state, navigate) {
 
   container.querySelector('#btn-create').addEventListener('click', () => {
     clearErrors();
+    const gameType = gameTypeSelect.value;
+    if (!gameType) return showError(authError, 'Please select a game.');
     socket.emit('lobby:create', {
-      gameType: gameTypeSelect.value,
+      gameType,
       playerName: nameInput.value.trim(),
       pin: pinInput.value,
-      settings: collectSettings(gameTypeSelect.value),
+      settings: collectSettings(gameType),
     });
   });
 
   container.querySelector('#btn-join').addEventListener('click', () => {
     clearErrors();
     const code = joinCodeInput.value.trim().toUpperCase();
-    if (!code || code.length !== 4) {
-      showError(joinError, 'Please enter a 4-character join code.');
-      return;
-    }
+    if (!code) { showError(joinError, 'Please enter a join code.'); return; }
     socket.emit('lobby:join', {
       joinCode: code,
       playerName: nameInput.value.trim(),
@@ -164,10 +181,7 @@ export function renderHome(container, socket, state, navigate) {
   container.querySelector('#btn-join-spectate').addEventListener('click', () => {
     clearErrors();
     const code = joinCodeInput.value.trim().toUpperCase();
-    if (!code || code.length !== 4) {
-      showError(joinError, 'Please enter a 4-character join code.');
-      return;
-    }
+    if (!code) { showError(joinError, 'Please enter a join code.'); return; }
     socket.emit('lobby:join', {
       joinCode: code,
       playerName: nameInput.value.trim(),
@@ -175,8 +189,6 @@ export function renderHome(container, socket, state, navigate) {
       asSpectator: true,
     });
   });
-
-  container.querySelector('#btn-leaderboard').addEventListener('click', () => navigate('leaderboard'));
 
   function clearErrors() { authError.style.display = 'none'; joinError.style.display = 'none'; }
   function showError(el, msg) { el.textContent = msg; el.style.display = 'block'; }

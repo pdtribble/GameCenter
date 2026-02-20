@@ -3,9 +3,34 @@ import { renderHome } from './views/home.js';
 import { renderLobby } from './views/lobby.js';
 import { renderGame } from './views/game.js';
 import { renderProfile } from './views/profile.js';
-import { renderLeaderboard } from './views/leaderboard.js';
 import { renderPostgame } from './views/postgame.js';
-import { showAchievementToast } from './components/achievement-toast.js';
+
+// ── Scale layout system ───────────────────────────────────────────────────────
+const LANDSCAPE_W = 1280, LANDSCAPE_H = 720;
+const PORTRAIT_W  = 414,  PORTRAIT_H  = 896;
+
+function applyScale() {
+  const portrait = window.innerWidth < window.innerHeight || window.innerWidth < 600;
+  const baseW = portrait ? PORTRAIT_W : LANDSCAPE_W;
+  const baseH = portrait ? PORTRAIT_H : LANDSCAPE_H;
+  const scale = Math.min(window.innerWidth / baseW, window.innerHeight / baseH);
+  const root = document.getElementById('app-root');
+  if (!root) return;
+  root.style.width  = baseW + 'px';
+  root.style.height = baseH + 'px';
+  root.style.transform = `scale(${scale})`;
+  root.style.transformOrigin = 'top left';
+  root.style.left = Math.round((window.innerWidth  - baseW * scale) / 2) + 'px';
+  root.style.top  = Math.round((window.innerHeight - baseH * scale) / 2) + 'px';
+  document.documentElement.dataset.layout = portrait ? 'portrait' : 'landscape';
+}
+
+window.addEventListener('resize', applyScale);
+applyScale();
+
+export function isPortrait() {
+  return document.documentElement.dataset.layout === 'portrait';
+}
 
 // ── State ─────────────────────────────────────────────────────────────────────
 const state = {
@@ -33,13 +58,12 @@ function navigate(view, data = {}) {
   navbar.style.display = view === 'home' ? 'none' : 'flex';
 
   switch (view) {
-    case 'home':        currentView = renderHome(app, socket, state, navigate); break;
-    case 'lobby':       currentView = renderLobby(app, socket, state, navigate); break;
-    case 'game':        currentView = renderGame(app, socket, state, navigate); break;
-    case 'profile':     currentView = renderProfile(app, socket, state, navigate); break;
-    case 'leaderboard': currentView = renderLeaderboard(app, socket, state, navigate); break;
-    case 'postgame':    currentView = renderPostgame(app, socket, state, navigate, data); break;
-    default:            app.innerHTML = '<p style="padding:2rem">Unknown view.</p>';
+    case 'home':     currentView = renderHome(app, socket, state, navigate); break;
+    case 'lobby':    currentView = renderLobby(app, socket, state, navigate); break;
+    case 'game':     currentView = renderGame(app, socket, state, navigate); break;
+    case 'profile':  currentView = renderProfile(app, socket, state, navigate); break;
+    case 'postgame': currentView = renderPostgame(app, socket, state, navigate, data); break;
+    default:         app.innerHTML = '<p style="padding:2rem">Unknown view.</p>';
   }
 }
 
@@ -50,7 +74,6 @@ socket.on('connect', () => {
   // Attempt to rejoin any active game session (fires server:game_started if found)
   socket.emit('client:rejoin_check');
 
-  // Check for join code in URL
   const params = new URLSearchParams(location.search);
   const joinCode = params.get('join');
 
@@ -66,9 +89,9 @@ socket.on('disconnect', () => {
   showSystemMessage('Disconnected from server. Reconnecting...');
 });
 
-socket.on('server:lobby_created', ({ lobby, joinCode, inviteUrl }) => {
+socket.on('server:lobby_created', ({ lobby }) => {
   state.lobby = lobby;
-  // Navigation is handled by server:lobby_joined which carries myPlayerId
+  // Navigation handled by server:lobby_joined
 });
 
 socket.on('server:lobby_joined', ({ lobby, players, myPlayerId }) => {
@@ -117,7 +140,7 @@ socket.on('server:game_started', ({ sessionId, state: gameState, joinCode, hostP
   state.gameState = gameState;
   if (joinCode) state.joinCode = joinCode;
   if (hostPlayerId) state.hostPlayerId = hostPlayerId;
-  socket.currentSessionId = sessionId;  // make sessionId accessible to renderers
+  socket.currentSessionId = sessionId;
   navigate('game');
 });
 
@@ -125,12 +148,6 @@ socket.on('server:game_state', (data) => {
   if (data.state) state.gameState = data.state;
   if (state.view === 'game' && currentView?.update) {
     currentView.update(data);
-  }
-});
-
-socket.on('server:game_event', ({ event }) => {
-  if (state.view === 'game' && currentView?.onEvent) {
-    currentView.onEvent(event);
   }
 });
 
@@ -146,10 +163,6 @@ socket.on('server:game_chat', (msg) => {
   if (state.view === 'game' && currentView?.onChat) currentView.onChat(msg);
 });
 
-socket.on('server:achievement', ({ achievement }) => {
-  showAchievementToast(achievement);
-});
-
 socket.on('server:announcement', ({ message }) => {
   showAnnouncement(message);
 });
@@ -158,12 +171,8 @@ socket.on('server:error', ({ code, message }) => {
   if (currentView?.onError) {
     currentView.onError(code, message);
   } else {
-    alert(`Error: ${message}`);
+    showSystemMessage(`Error: ${message}`);
   }
-});
-
-socket.on('server:turn_timer', (data) => {
-  if (state.view === 'game' && currentView?.onTimer) currentView.onTimer(data);
 });
 
 // ── Theme toggle ──────────────────────────────────────────────────────────────

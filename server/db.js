@@ -97,15 +97,6 @@ function migrate() {
       timestamp TEXT DEFAULT (datetime('now'))
     );
 
-    CREATE TABLE IF NOT EXISTS achievements (
-      id TEXT PRIMARY KEY,
-      player_id TEXT REFERENCES players(id),
-      achievement_key TEXT NOT NULL,
-      game_type TEXT,
-      unlocked_at TEXT DEFAULT (datetime('now')),
-      UNIQUE(player_id, achievement_key)
-    );
-
     CREATE TABLE IF NOT EXISTS presets (
       id TEXT PRIMARY KEY,
       player_id TEXT REFERENCES players(id),
@@ -130,15 +121,13 @@ function migrate() {
     );
   `);
 
-  // Seed game registry with the three supported games
+  // Seed game registry — modules define their own metadata via exports;
+  // registry rows are minimal anchors for the lobby system.
   const seedGames = db.prepare(`
     INSERT OR IGNORE INTO game_registry (game_type, display_name, min_players, max_players)
     VALUES (?, ?, ?, ?)
   `);
-  seedGames.run('blackjack', 'Blackjack', 1, 7);
-  seedGames.run('poker', 'Texas Hold\'em Poker', 2, 8);
-  seedGames.run('bs', 'BS (Cheat)', 2, 8);
-  seedGames.run('game_night', 'Game Night', 2, 8);
+  seedGames.run('highest-card', 'Highest Card', 2, 6);
 
   console.log('[db] Schema migration complete');
 }

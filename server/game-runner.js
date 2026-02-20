@@ -1,21 +1,25 @@
+// game-runner.js — engine-level game session management
+// Knows nothing about individual game rules; all logic is in game modules.
+'use strict';
+
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const db = require('./db');
-const achievementEngine = require('./achievement-engine');
 const botRunner = require('./bot-runner');
 
 const CHAT_MAX = 280;
+const AFK_INTERMISSION_MS = 30_000;
+const BOT_READY_MAX_DELAY_MS = 1000;
+const EMIT_MIN_INTERVAL_MS = Math.floor(1000 / 30); // cap at 30 state emits/sec
 
-// Active game sessions in memory: sessionId -> { module, state, lobbyId, gameType, players }
+// activeSessions: Map<sessionId, Session>
 const activeSessions = new Map();
 
-// Rate-limiting state emission: sessionId -> { lastEmit, queued }
+// Debounce state: Map<sessionId, { lastEmit, queued }>
 const emitDebounce = new Map();
-const EMIT_MIN_INTERVAL_MS = Math.floor(1000 / 30); // max 30/sec
 
-// Phase-transition timers
-const intermissionTimers = new Map(); // sessionId -> timeoutId (30s AFK guard)
-const bettingTimers = new Map();      // sessionId -> timeoutId
+// AFK intermission timers: Map<sessionId, timeoutId>
+const intermissionTimers = new Map();
 
 // ── Module loader ─────────────────────────────────────────────────────────────
 function loadGameModule(gameType) {
@@ -27,82 +31,95 @@ function loadGameModule(gameType) {
   }
 }
 
-// ── Start a game ──────────────────────────────────────────────────────────────
+// ── Build per-player client state ─────────────────────────────────────────────
+// Calls module.getPublicState() then augments with engine metadata.
+function buildClientState(session, playerId) {
+  const { module: mod, state, gameType, enginePhase, readySet, sittingOut } = session;
+  const pub = mod.getPublicState(state, playerId);
+  return {
+    ...pub,
+    gameType,
+    enginePhase,
+    readyPlayers: [...readySet],
+    sittingOut: [...sittingOut],
+    roundSummary: enginePhase === 'intermission' ? mod.getRoundSummary(state) : null,
+  };
+}
+
+// ── startGame ─────────────────────────────────────────────────────────────────
 function startGame(io, lobby, allPlayers) {
   const gameType = lobby.game_type;
   const mod = loadGameModule(gameType);
-
-  const activePlayers = allPlayers.filter(p => p.role !== 'spectator');
   const settings = JSON.parse(lobby.settings || '{}');
 
+  let activePlayers = allPlayers.filter(p => p.role !== 'spectator');
+  const spectators = allPlayers.filter(p => p.role === 'spectator');
+
+  // Bot fill — create ephemeral in-memory bots (not persisted to DB)
+  if (mod.botFillAllowed) {
+    const fillTarget = Math.max(mod.botFillMin || mod.minPlayers || 2, activePlayers.length);
+    let botNum = activePlayers.filter(p => p.is_bot).length + 1;
+    while (activePlayers.length < fillTarget) {
+      activePlayers.push({
+        id: `bot-${uuidv4()}`,
+        display_name: `Bot ${botNum}`,
+        displayName: `Bot ${botNum}`,
+        is_bot: 1,
+        role: 'player',
+      });
+      botNum++;
+    }
+  }
+
   const sessionId = uuidv4();
-  const { state } = mod.initGame(settings, activePlayers);
+  const state = mod.initGame(activePlayers, settings);
 
   db.prepare(`
     INSERT INTO game_sessions (id, lobby_id, game_type, module_version, location)
     VALUES (?, ?, ?, ?, ?)
-  `).run(sessionId, lobby.id, gameType, mod.version, 'online');
+  `).run(sessionId, lobby.id, gameType, mod.version || '1.0.0', 'online');
 
-  activeSessions.set(sessionId, {
+  const session = {
     module: mod,
     state,
-    lobbyId: lobby.id,
     gameType,
+    lobbyId: lobby.id,
     players: activePlayers,
-    spectators: allPlayers.filter(p => p.role === 'spectator'),
+    spectators,
+    config: settings,
+    enginePhase: 'playing',
+    readySet: new Set(),
+    sittingOut: new Set(),
     io,
-  });
+  };
+
+  activeSessions.set(sessionId, session);
 
   const lobbyRow = db.prepare('SELECT join_code, host_player_id FROM lobbies WHERE id = ?').get(lobby.id);
   const joinCode = lobbyRow?.join_code || null;
   const hostPlayerId = lobbyRow?.host_player_id || null;
 
-  // Emit game_started to each player with their personal state view
   for (const player of activePlayers) {
-    const playerState = mod.getState(state, player.id);
-    const sockets = findSocketsByPlayerId(io, player.id);
-    for (const s of sockets) {
+    if (player.is_bot) continue;
+    const clientState = buildClientState(session, player.id);
+    for (const s of findSocketsByPlayerId(io, player.id)) {
       s.join(`session:${sessionId}`);
       s.currentSessionId = sessionId;
-      s.emit('server:game_started', { sessionId, state: playerState, joinCode, hostPlayerId });
+      s.emit('server:game_started', { sessionId, state: clientState, joinCode, hostPlayerId });
     }
   }
 
-  for (const spec of allPlayers.filter(p => p.role === 'spectator')) {
-    const sockets = findSocketsByPlayerId(io, spec.id);
-    for (const s of sockets) {
+  for (const spec of spectators) {
+    const clientState = buildClientState(session, null);
+    for (const s of findSocketsByPlayerId(io, spec.id)) {
       s.join(`session:${sessionId}`);
-      s.emit('server:game_started', { sessionId, state: mod.getState(state, null), joinCode, hostPlayerId });
+      s.emit('server:game_started', { sessionId, state: clientState, joinCode, hostPlayerId });
     }
   }
 
-  // Kick off bot runner if first player is a bot (playing phase)
-  if (state.phase === 'playing') {
-    botRunner.scheduleIfBot(io, sessionId, activeSessions, handleActionInternal);
-  }
+  botRunner.scheduleIfBot(io, sessionId, activeSessions, handleActionInternal);
 
-  // If starting in betting phase, schedule auto-bet timer and bot bets
-  if (state.phase === 'betting' && state.bettingEndsAt) {
-    const delay = Math.max(0, state.bettingEndsAt - Date.now());
-    bettingTimers.set(sessionId, setTimeout(() => {
-      bettingTimers.delete(sessionId);
-      handleActionInternal(io, sessionId, '__system__', { type: 'auto_bet' });
-    }, delay));
-
-    // Schedule bot bets
-    const session = activeSessions.get(sessionId);
-    if (session) {
-      for (const player of activePlayers.filter(p => p.is_bot)) {
-        const pid = player.id;
-        setTimeout(() => {
-          const s = activeSessions.get(sessionId);
-          if (s && s.state.phase === 'betting' && (s.state.bets == null || s.state.bets[pid] === undefined)) {
-            handleActionInternal(io, sessionId, pid, { type: 'bet', amount: 10 });
-          }
-        }, 800 + Math.random() * 700);
-      }
-    }
-  }
+  console.log(`[game] started session=${sessionId} game=${gameType} players=${activePlayers.length}`);
 }
 
 // ── game:action ───────────────────────────────────────────────────────────────
@@ -113,199 +130,244 @@ function handleAction(socket, io, data) {
   if (!session) {
     return socket.emit('server:error', { code: 'NO_SESSION', message: 'Session not found.' });
   }
-
-  // end_game is restricted to the lobby host
-  if (action?.type === 'end_game') {
-    const lobby = db.prepare('SELECT * FROM lobbies WHERE id = ?').get(session.lobbyId);
-    if (!lobby || lobby.host_player_id !== socket.playerId) {
-      return socket.emit('server:error', { code: 'NOT_HOST', message: 'Only the host can end the game.' });
-    }
-    return handleActionInternal(io, sessionId, socket.playerId, action);
+  if (session.enginePhase !== 'playing') {
+    return socket.emit('server:error', { code: 'NOT_PLAYING', message: 'No actions during intermission.' });
   }
-
-  if (!session.module.isTurnValid(session.state, socket.playerId)) {
-    return socket.emit('server:error', { code: 'NOT_YOUR_TURN', message: 'It is not your turn.' });
+  if (!session.module.isTurnValid(session.state, socket.playerId, action)) {
+    return socket.emit('server:error', { code: 'INVALID_ACTION', message: 'That action is not valid right now.' });
   }
 
   handleActionInternal(io, sessionId, socket.playerId, action);
 }
 
+// ── Core action handler (also called by bot runner) ───────────────────────────
 function handleActionInternal(io, sessionId, playerId, action) {
   const session = activeSessions.get(sessionId);
-  if (!session) return;
+  if (!session || session.enginePhase !== 'playing') return;
 
-  const { module: mod, state } = session;
-  const result = mod.handleAction(state, playerId, action);
+  const { module: mod } = session;
+  const result = mod.handleAction(session.state, playerId, action);
 
   if (result.error) {
-    const sockets = findSocketsByPlayerId(io, playerId);
-    for (const s of sockets) {
+    for (const s of findSocketsByPlayerId(io, playerId)) {
       s.emit('server:error', { code: 'INVALID_ACTION', message: result.error });
     }
     return;
   }
 
   session.state = result.state;
-
-  // Log events
-  for (const event of result.events || []) {
-    const eventId = uuidv4();
-    db.prepare(`
-      INSERT INTO game_events (id, session_id, player_id, event_type, metadata)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(eventId, sessionId, event.playerId || playerId, event.type, JSON.stringify(event.metadata || {}));
-
-    io.to(`session:${sessionId}`).emit('server:game_event', { event });
-
-    // Check achievements after each event
-    achievementEngine.checkAfterEvent(io, session, event);
-  }
-
-  // Emit updated state to each player
   emitGameState(io, sessionId, session);
 
-  // Check game over
-  const gameOver = mod.isGameOver(session.state);
-  if (gameOver) {
-    finishGame(io, sessionId, gameOver);
+  if (mod.isGameOver(session.state)) {
+    finishGame(io, sessionId);
     return;
   }
 
-  const st = session.state;
-
-  // ── Intermission phase handling ──────────────────────────────────────────────
-  if (st.phase === 'intermission') {
-    // Clear intermission timer if already set (state just transitioned to intermission)
-    // and start a fresh 30-second AFK guard
-    if (!intermissionTimers.has(sessionId)) {
-      intermissionTimers.set(sessionId, setTimeout(() => {
-        intermissionTimers.delete(sessionId);
-        handleActionInternal(io, sessionId, '__system__', { type: 'intermission_timeout' });
-      }, 30000));
-    }
-
-    // Schedule bot auto-ready
-    for (const player of session.players.filter(p => p.is_bot)) {
-      const pid = player.id;
-      setTimeout(() => {
-        const s = activeSessions.get(sessionId);
-        if (s && s.state.phase === 'intermission' && !(s.state.readyPlayers || []).includes(pid)) {
-          handleActionInternal(io, sessionId, pid, { type: 'ready' });
-        }
-      }, 500 + Math.random() * 500);
-    }
+  if (mod.isRoundOver(session.state)) {
+    enterIntermission(io, sessionId);
+    return;
   }
 
-  // Clear intermission timer when phase moves away from intermission
-  if (st.phase !== 'intermission' && intermissionTimers.has(sessionId)) {
+  // Still in playing phase — schedule any bots that now have valid actions
+  botRunner.scheduleIfBot(io, sessionId, activeSessions, handleActionInternal);
+}
+
+// ── Intermission ──────────────────────────────────────────────────────────────
+function enterIntermission(io, sessionId) {
+  const session = activeSessions.get(sessionId);
+  if (!session) return;
+
+  session.enginePhase = 'intermission';
+  session.readySet.clear();
+
+  // Bots auto-ready with a small delay so state broadcast lands first
+  for (const player of session.players) {
+    if (!player.is_bot) continue;
+    const pid = player.id;
+    setTimeout(() => {
+      const s = activeSessions.get(sessionId);
+      if (!s || s.enginePhase !== 'intermission') return;
+      s.readySet.add(pid);
+      emitGameState(io, sessionId, s);
+      checkAllReady(io, sessionId);
+    }, 200 + Math.random() * BOT_READY_MAX_DELAY_MS);
+  }
+
+  // AFK guard: after 30s, sit out non-ready humans and advance
+  if (intermissionTimers.has(sessionId)) clearTimeout(intermissionTimers.get(sessionId));
+  intermissionTimers.set(sessionId, setTimeout(() => {
+    intermissionTimers.delete(sessionId);
+    const s = activeSessions.get(sessionId);
+    if (!s || s.enginePhase !== 'intermission') return;
+    for (const player of s.players) {
+      if (!player.is_bot && !s.readySet.has(player.id)) {
+        s.sittingOut.add(player.id);
+      }
+    }
+    advanceRound(io, sessionId);
+  }, AFK_INTERMISSION_MS));
+
+  emitGameState(io, sessionId, session);
+}
+
+// ── game:ready ────────────────────────────────────────────────────────────────
+function handleReady(socket, io, data) {
+  const sessionId = data?.sessionId || socket.currentSessionId;
+  const session = activeSessions.get(sessionId);
+  if (!session || session.enginePhase !== 'intermission') return;
+
+  session.readySet.add(socket.playerId);
+  emitGameState(io, sessionId, session);
+  checkAllReady(io, sessionId);
+}
+
+// ── game:sit_out / game:sit_in ────────────────────────────────────────────────
+function handleSitOut(socket, io, data) {
+  const sessionId = data?.sessionId || socket.currentSessionId;
+  const session = activeSessions.get(sessionId);
+  if (!session) return;
+  session.sittingOut.add(socket.playerId);
+  session.readySet.delete(socket.playerId);
+  emitGameState(io, sessionId, session);
+}
+
+function handleSitIn(socket, io, data) {
+  const sessionId = data?.sessionId || socket.currentSessionId;
+  const session = activeSessions.get(sessionId);
+  if (!session) return;
+  session.sittingOut.delete(socket.playerId);
+  emitGameState(io, sessionId, session);
+}
+
+// ── Check all non-bot non-sittingOut players ready ────────────────────────────
+function checkAllReady(io, sessionId) {
+  const session = activeSessions.get(sessionId);
+  if (!session || session.enginePhase !== 'intermission') return;
+
+  const waiting = session.players.filter(p =>
+    !p.is_bot && !session.sittingOut.has(p.id) && !session.readySet.has(p.id)
+  );
+
+  if (waiting.length === 0) {
+    advanceRound(io, sessionId);
+  }
+}
+
+function advanceRound(io, sessionId) {
+  const session = activeSessions.get(sessionId);
+  if (!session) return;
+
+  if (intermissionTimers.has(sessionId)) {
     clearTimeout(intermissionTimers.get(sessionId));
     intermissionTimers.delete(sessionId);
   }
 
-  // Schedule betting → auto_bet timer
-  if (st.phase === 'betting' && st.bettingEndsAt && !bettingTimers.has(sessionId)) {
-    const delay = Math.max(0, st.bettingEndsAt - Date.now());
-    bettingTimers.set(sessionId, setTimeout(() => {
-      bettingTimers.delete(sessionId);
-      handleActionInternal(io, sessionId, '__system__', { type: 'auto_bet' });
-    }, delay));
+  const activePlayers = session.players.filter(p => !session.sittingOut.has(p.id));
+
+  if (activePlayers.length < (session.module.minPlayers || 2)) {
+    finishGame(io, sessionId);
+    return;
   }
 
-  // Schedule immediate bot bets when in betting phase
-  if (st.phase === 'betting') {
-    for (const player of session.players.filter(p => p.is_bot && (st.bets == null || st.bets[p.id] === undefined))) {
-      const pid = player.id;
-      setTimeout(() => {
-        const s = activeSessions.get(sessionId);
-        if (s && s.state.phase === 'betting' && (s.state.bets == null || s.state.bets[pid] === undefined)) {
-          handleActionInternal(io, sessionId, pid, { type: 'bet', amount: 10 });
-        }
-      }, 800 + Math.random() * 700);
-    }
-  }
+  session.state = session.module.startNextRound(session.state, activePlayers);
+  session.enginePhase = 'playing';
+  session.readySet.clear();
 
-  // Schedule bot turn if next player is a bot (playing phase)
-  if (st.phase === 'playing') {
-    botRunner.scheduleIfBot(io, sessionId, activeSessions, handleActionInternal);
+  emitGameState(io, sessionId, session);
+  botRunner.scheduleIfBot(io, sessionId, activeSessions, handleActionInternal);
+}
+
+// ── Game over ─────────────────────────────────────────────────────────────────
+function finishGame(io, sessionId) {
+  const session = activeSessions.get(sessionId);
+  if (!session) return;
+
+  const { module: mod, state } = session;
+  const summary = mod.getRoundSummary(state);
+  const scores = summary.scores || {};
+
+  db.prepare("UPDATE game_sessions SET ended_at = datetime('now') WHERE id = ?").run(sessionId);
+
+  // Derive placements from scores for human players only (bots not recorded in DB)
+  const humanPlayers = session.players.filter(p => !p.is_bot);
+  const sorted = [...humanPlayers].sort((a, b) => (scores[b.id] || 0) - (scores[a.id] || 0));
+
+  const insertResult = db.prepare(
+    'INSERT INTO game_results (id, session_id, player_id, placement, result) VALUES (?, ?, ?, ?, ?)'
+  );
+
+  let lastScore = null, lastPlacement = 0;
+  const results = sorted.map((p, i) => {
+    const score = scores[p.id] || 0;
+    if (score !== lastScore) { lastPlacement = i + 1; lastScore = score; }
+    const result = lastPlacement === 1 ? 'win' : 'loss';
+    insertResult.run(uuidv4(), sessionId, p.id, lastPlacement, result);
+    return {
+      playerId: p.id,
+      displayName: p.displayName || p.display_name || p.id,
+      placement: lastPlacement,
+      result,
+      score,
+    };
+  });
+
+  io.to(`session:${sessionId}`).emit('server:game_over', {
+    results,
+    postGameSummary: summary,
+  });
+
+  console.log(`[game] ended session=${sessionId}`);
+  cleanupSession(sessionId);
+}
+
+function cleanupSession(sessionId) {
+  activeSessions.delete(sessionId);
+  emitDebounce.delete(sessionId);
+  botRunner.cancelSession(sessionId);
+  if (intermissionTimers.has(sessionId)) {
+    clearTimeout(intermissionTimers.get(sessionId));
+    intermissionTimers.delete(sessionId);
   }
 }
 
 // ── State emission with debounce ──────────────────────────────────────────────
 function emitGameState(io, sessionId, session) {
   const now = Date.now();
-  const debounce = emitDebounce.get(sessionId) || { lastEmit: 0 };
+  const debounce = emitDebounce.get(sessionId) || { lastEmit: 0, queued: false };
   const elapsed = now - debounce.lastEmit;
 
   if (elapsed >= EMIT_MIN_INTERVAL_MS) {
     doEmitGameState(io, sessionId, session);
-    emitDebounce.set(sessionId, { lastEmit: now });
-  } else {
-    if (!debounce.queued) {
-      debounce.queued = true;
-      emitDebounce.set(sessionId, debounce);
-      setTimeout(() => {
-        const s = activeSessions.get(sessionId);
-        if (s) doEmitGameState(io, sessionId, s);
-        const d = emitDebounce.get(sessionId);
-        if (d) { d.queued = false; d.lastEmit = Date.now(); }
-      }, EMIT_MIN_INTERVAL_MS - elapsed);
-    }
+    emitDebounce.set(sessionId, { lastEmit: now, queued: false });
+  } else if (!debounce.queued) {
+    debounce.queued = true;
+    emitDebounce.set(sessionId, debounce);
+    setTimeout(() => {
+      const s = activeSessions.get(sessionId);
+      if (s) doEmitGameState(io, sessionId, s);
+      const d = emitDebounce.get(sessionId);
+      if (d) { d.queued = false; d.lastEmit = Date.now(); }
+    }, EMIT_MIN_INTERVAL_MS - elapsed);
   }
 }
 
 function doEmitGameState(io, sessionId, session) {
-  const { module: mod, state, players, spectators } = session;
-
-  for (const player of players) {
-    const playerState = mod.getState(state, player.id);
-    const sockets = findSocketsByPlayerId(io, player.id);
-    for (const s of sockets) s.emit('server:game_state', { state: playerState });
+  for (const player of session.players) {
+    if (player.is_bot) continue;
+    const clientState = buildClientState(session, player.id);
+    for (const s of findSocketsByPlayerId(io, player.id)) {
+      s.emit('server:game_state', { state: clientState });
+    }
   }
 
-  const specState = mod.getState(state, null);
-  for (const spec of spectators || []) {
-    const sockets = findSocketsByPlayerId(io, spec.id);
-    for (const s of sockets) s.emit('server:game_state', { state: specState });
+  if (session.spectators && session.spectators.length > 0) {
+    const specState = buildClientState(session, null);
+    for (const spec of session.spectators) {
+      for (const s of findSocketsByPlayerId(io, spec.id)) {
+        s.emit('server:game_state', { state: specState });
+      }
+    }
   }
-}
-
-// ── Game over ─────────────────────────────────────────────────────────────────
-function finishGame(io, sessionId, gameOver) {
-  const session = activeSessions.get(sessionId);
-  if (!session) return;
-
-  const { module: mod, state, gameType } = session;
-
-  db.prepare("UPDATE game_sessions SET ended_at = datetime('now') WHERE id = ?").run(sessionId);
-
-  const insertResult = db.prepare(`
-    INSERT INTO game_results (id, session_id, player_id, placement, result)
-    VALUES (?, ?, ?, ?, ?)
-  `);
-
-  const enrichedPlacements = gameOver.placements.map(p => {
-    const player = session.state.players?.find(pl => pl.id === p.playerId);
-    return { ...p, displayName: player?.displayName || p.playerId };
-  });
-
-  for (const placement of enrichedPlacements) {
-    const id = uuidv4();
-    insertResult.run(id, sessionId, placement.playerId, placement.placement, placement.result);
-    achievementEngine.checkAfterResult(io, session, placement);
-  }
-
-  const postGameSummary = mod.getPostGameSummary(state, enrichedPlacements);
-
-  io.to(`session:${sessionId}`).emit('server:game_over', {
-    results: enrichedPlacements,
-    postGameSummary,
-  });
-
-  activeSessions.delete(sessionId);
-  emitDebounce.delete(sessionId);
-  botRunner.cancelSession(sessionId);
-  if (intermissionTimers.has(sessionId)) { clearTimeout(intermissionTimers.get(sessionId)); intermissionTimers.delete(sessionId); }
-  if (bettingTimers.has(sessionId)) { clearTimeout(bettingTimers.get(sessionId)); bettingTimers.delete(sessionId); }
 }
 
 // ── game:chat ─────────────────────────────────────────────────────────────────
@@ -320,7 +382,7 @@ function handleChat(socket, io, data) {
   if (!clean) return;
 
   const session = activeSessions.get(sessionId);
-  const isSpectator = session.spectators.some(s => s.id === socket.playerId);
+  const isSpectator = (session.spectators || []).some(s => s.id === socket.playerId);
 
   io.to(`session:${sessionId}`).emit('server:game_chat', {
     playerId: player.id,
@@ -331,83 +393,17 @@ function handleChat(socket, io, data) {
   });
 }
 
-// ── Post-game stubs (rematch removed from client) ─────────────────────────────
-function handleRematch(socket, io, data) {
-  // No-op: rematch system removed
-}
-
-function handleNewLobby(socket, io, data) {
-  socket.emit('server:announcement', { message: 'Create or join a new lobby from the home screen.' });
-}
-
-// ── Mid-round join (player joins an active game) ──────────────────────────────
-function handleMidJoin(socket, io, sessionId) {
-  const session = activeSessions.get(sessionId);
-  if (!session) return;
-
-  const playerId = socket.playerId;
-
-  // Add to session.players if not already there
-  if (!session.players.some(p => p.id === playerId)) {
-    const player = db.prepare('SELECT * FROM players WHERE id = ?').get(playerId);
-    if (!player) return;
-
-    const playerEntry = {
-      id: playerId,
-      display_name: player.display_name,
-      displayName: player.display_name,
-      is_bot: 0,
-      role: 'player',
-    };
-    session.players.push(playerEntry);
-
-    // Update game state
-    if (!session.state.players.some(p => p.id === playerId)) {
-      session.state.players.push({ id: playerId, displayName: player.display_name, is_bot: false });
-    }
-    if (!session.state.sittingOut.includes(playerId)) {
-      session.state.sittingOut.push(playerId);
-    }
-    if (session.state.chips) {
-      session.state.chips[playerId] = 0;
-    }
-    if (session.state.sessionScores) {
-      session.state.sessionScores[playerId] = { wins: 0, losses: 0, pushes: 0 };
-    }
-  }
-
-  const lobbyRow = db.prepare('SELECT join_code, host_player_id FROM lobbies WHERE id = ?').get(session.lobbyId);
-
-  socket.join(`session:${sessionId}`);
-  socket.currentSessionId = sessionId;
-  socket.emit('server:game_started', {
-    sessionId,
-    state: session.module.getState(session.state, playerId),
-    joinCode: lobbyRow?.join_code || null,
-    hostPlayerId: lobbyRow?.host_player_id || null,
-  });
-
-  // Broadcast updated state to all players in the session
-  emitGameState(io, sessionId, session);
-}
-
 // ── Force end (admin) ─────────────────────────────────────────────────────────
 function forceEndSession(io, sessionId) {
   const session = activeSessions.get(sessionId);
   if (!session) return;
-
   db.prepare("UPDATE game_sessions SET ended_at = datetime('now') WHERE id = ?").run(sessionId);
   io.to(`session:${sessionId}`).emit('server:announcement', { message: 'This session was ended by an admin.' });
-  io.to(`session:${sessionId}`).emit('server:game_over', { results: [], postGameSummary: [] });
-
-  activeSessions.delete(sessionId);
-  emitDebounce.delete(sessionId);
-  botRunner.cancelSession(sessionId);
-  if (intermissionTimers.has(sessionId)) { clearTimeout(intermissionTimers.get(sessionId)); intermissionTimers.delete(sessionId); }
-  if (bettingTimers.has(sessionId)) { clearTimeout(bettingTimers.get(sessionId)); bettingTimers.delete(sessionId); }
+  io.to(`session:${sessionId}`).emit('server:game_over', { results: [], postGameSummary: null });
+  cleanupSession(sessionId);
 }
 
-// ── Rejoin (reconnect after page reload) ──────────────────────────────────────
+// ── Rejoin (page reload while game is active) ─────────────────────────────────
 function handleRejoin(socket, io) {
   const playerId = socket.playerId;
   if (!playerId) return;
@@ -418,17 +414,52 @@ function handleRejoin(socket, io) {
     if (!isPlayer && !isSpectator) continue;
 
     const lobbyRow = db.prepare('SELECT join_code, host_player_id FROM lobbies WHERE id = ?').get(session.lobbyId);
-    const joinCode = lobbyRow?.join_code || null;
-    const hostPlayerId = lobbyRow?.host_player_id || null;
-
     socket.join(`session:${sessionId}`);
     socket.currentSessionId = sessionId;
-    const playerState = isPlayer
-      ? session.module.getState(session.state, playerId)
-      : session.module.getState(session.state, null);
-    socket.emit('server:game_started', { sessionId, state: playerState, joinCode, hostPlayerId });
+    const clientState = isPlayer ? buildClientState(session, playerId) : buildClientState(session, null);
+    socket.emit('server:game_started', {
+      sessionId,
+      state: clientState,
+      joinCode: lobbyRow?.join_code || null,
+      hostPlayerId: lobbyRow?.host_player_id || null,
+    });
     return;
   }
+}
+
+// ── Mid-game join ─────────────────────────────────────────────────────────────
+function handleMidJoin(socket, io, sessionId) {
+  const session = activeSessions.get(sessionId);
+  if (!session) return;
+
+  const playerId = socket.playerId;
+
+  if (!session.players.some(p => p.id === playerId)) {
+    const player = db.prepare('SELECT * FROM players WHERE id = ?').get(playerId);
+    if (!player) return;
+    session.players.push({
+      id: playerId,
+      display_name: player.display_name,
+      displayName: player.display_name,
+      is_bot: 0,
+      role: 'player',
+    });
+    session.sittingOut.add(playerId);
+  }
+
+  const lobbyRow = db.prepare('SELECT join_code, host_player_id FROM lobbies WHERE id = ?').get(session.lobbyId);
+  socket.join(`session:${sessionId}`);
+  socket.currentSessionId = sessionId;
+
+  const clientState = buildClientState(session, playerId);
+  socket.emit('server:game_started', {
+    sessionId,
+    state: clientState,
+    joinCode: lobbyRow?.join_code || null,
+    hostPlayerId: lobbyRow?.host_player_id || null,
+  });
+
+  emitGameState(io, sessionId, session);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -451,9 +482,10 @@ module.exports = {
   startGame,
   handleAction,
   handleActionInternal,
+  handleReady,
+  handleSitOut,
+  handleSitIn,
   handleChat,
-  handleRematch,
-  handleNewLobby,
   forceEndSession,
   getActiveSessions,
   handleRejoin,

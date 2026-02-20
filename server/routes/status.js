@@ -40,7 +40,7 @@ router.get('/status', (req, res) => {
   });
 });
 
-// GET /api/games — list game types with their setup configs
+// GET /api/games — list game types with their setup configs and module metadata
 router.get('/api/games', (req, res) => {
   const rows = db.prepare('SELECT game_type, display_name FROM game_registry ORDER BY game_type').all();
   const games = rows.map(row => {
@@ -48,11 +48,16 @@ router.get('/api/games', (req, res) => {
       const mod = require(path.join(__dirname, '../../games', row.game_type, 'index.js'));
       return {
         gameType: row.game_type,
-        label: row.display_name || row.game_type,
+        label: mod.name || row.display_name || row.game_type,
+        description: mod.description || '',
+        minPlayers: mod.minPlayers || 2,
+        maxPlayers: mod.maxPlayers || 8,
+        botFillAllowed: !!mod.botFillAllowed,
+        botFillMin: mod.botFillMin || mod.minPlayers || 2,
         config: mod.getSetupConfig ? mod.getSetupConfig() : [],
       };
     } catch (_e) {
-      return { gameType: row.game_type, label: row.game_type, config: [] };
+      return { gameType: row.game_type, label: row.game_type, description: '', minPlayers: 2, maxPlayers: 8, botFillAllowed: false, botFillMin: 2, config: [] };
     }
   });
   res.json(games);

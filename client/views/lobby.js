@@ -1,6 +1,5 @@
-// Lobby view — waiting room, ready-up, chat, settings
+// Lobby view — waiting room, ready-up, chat
 import { ChatComponent } from '../components/chat.js';
-import { ReadyIndicator } from '../components/ready-indicator.js';
 
 export function renderLobby(container, socket, state, navigate) {
   const { lobby, lobbyPlayers } = state;
@@ -9,10 +8,10 @@ export function renderLobby(container, socket, state, navigate) {
     <div class="page" style="max-width:660px">
       <div class="card" style="margin-bottom:var(--spacing-md)">
         <div class="flex items-center justify-between" style="margin-bottom:var(--spacing-md)">
-          <h1 class="section-heading" style="margin:0">
-            ${escHtml(gameLabel(lobby?.game_type))} Lobby
+          <h1 class="section-heading" style="margin:0" id="lobby-title">
+            ${escHtml(lobby?.game_type || 'Game')} Lobby
           </h1>
-          <span class="badge badge-accent">${escHtml(lobby?.game_type || '')}</span>
+          <span class="badge badge-accent" id="lobby-badge">${escHtml(lobby?.game_type || '')}</span>
         </div>
         <div class="join-code-display" style="margin-bottom:var(--spacing-md)">
           <div>
@@ -22,6 +21,8 @@ export function renderLobby(container, socket, state, navigate) {
           <button class="btn btn-secondary btn-sm" id="btn-copy-link">📋 Copy Link</button>
         </div>
 
+        <div id="bot-fill-banner" class="text-muted" style="font-size:var(--font-size-sm);margin-bottom:var(--spacing-sm);display:none"></div>
+
         <div id="players-list"></div>
         <div id="lobby-error" class="error-msg" style="display:none;margin-top:var(--spacing-sm)"></div>
 
@@ -29,13 +30,6 @@ export function renderLobby(container, socket, state, navigate) {
           <button class="btn btn-secondary" id="btn-ready" style="flex:1">Ready</button>
           <button class="btn btn-primary" id="btn-start" style="flex:1;display:none">Start Game</button>
         </div>
-      </div>
-
-      <!-- Settings (host only) -->
-      <div id="settings-section" class="card" style="margin-bottom:var(--spacing-md);display:none">
-        <h2 class="section-heading" style="font-size:var(--font-size-lg)">Settings</h2>
-        <div id="game-settings-fields"></div>
-        <button class="btn btn-secondary btn-sm" id="btn-save-settings">Save Settings</button>
       </div>
 
       <!-- Chat -->
@@ -49,10 +43,28 @@ export function renderLobby(container, socket, state, navigate) {
   const startBtn = container.querySelector('#btn-start');
   const readyBtn = container.querySelector('#btn-ready');
   const errorEl = container.querySelector('#lobby-error');
-  const settingsSection = container.querySelector('#settings-section');
+  const botFillBanner = container.querySelector('#bot-fill-banner');
+  const lobbyTitle = container.querySelector('#lobby-title');
+  const lobbyBadge = container.querySelector('#lobby-badge');
 
   let isReady = false;
   let chat;
+
+  // Fetch game metadata to show bot fill info and correct game label
+  fetch('/api/games')
+    .then(r => r.json())
+    .then(games => {
+      const meta = games.find(g => g.gameType === lobby?.game_type);
+      if (meta) {
+        lobbyTitle.textContent = `${meta.label} Lobby`;
+        lobbyBadge.textContent = meta.label;
+        if (meta.botFillAllowed) {
+          botFillBanner.textContent = `Bots will fill automatically to reach ${meta.botFillMin} players.`;
+          botFillBanner.style.display = 'block';
+        }
+      }
+    })
+    .catch(() => {});
 
   function renderPlayers(players) {
     if (!players || players.length === 0) {
@@ -75,31 +87,14 @@ export function renderLobby(container, socket, state, navigate) {
     }).join('');
   }
 
-  function updateHostControls(players) {
-    const myLobby = state.lobby;
-    const isHost = myLobby && state.myPlayerId === myLobby.host_player_id;
+  function updateHostControls() {
+    const isHost = state.lobby && state.myPlayerId === state.lobby.host_player_id;
     startBtn.style.display = isHost ? 'block' : 'none';
-    settingsSection.style.display = isHost ? 'block' : 'none';
-    if (isHost) renderSettingsFields(myLobby.game_type);
-  }
-
-  function renderSettingsFields(gameType) {
-    const fields = container.querySelector('#game-settings-fields');
-    const settings = JSON.parse(state.lobby?.settings || '{}');
-    // Settings are locked in at lobby creation — in-lobby panel only shows Bot Difficulty
-    fields.innerHTML = `<div class="form-group">
-      <label>Bot Difficulty</label>
-      <select class="input" id="setting-botDifficulty">
-        <option value="easy"${settings.botDifficulty === 'easy' ? ' selected' : ''}>Easy</option>
-        <option value="medium"${!settings.botDifficulty || settings.botDifficulty === 'medium' ? ' selected' : ''}>Medium</option>
-        <option value="hard"${settings.botDifficulty === 'hard' ? ' selected' : ''}>Hard</option>
-      </select>
-    </div>`;
   }
 
   // Init
   renderPlayers(lobbyPlayers);
-  updateHostControls(lobbyPlayers);
+  updateHostControls();
 
   // Chat
   chat = new ChatComponent(container.querySelector('#chat-mount'), socket, 'lobby', state.lobby?.id);
@@ -128,13 +123,6 @@ export function renderLobby(container, socket, state, navigate) {
     socket.emit('lobby:start', { lobbyId: state.lobby?.id });
   });
 
-  // Save settings
-  container.querySelector('#btn-save-settings').addEventListener('click', () => {
-    const gameType = state.lobby?.game_type;
-    const settings = { botDifficulty: container.querySelector('#setting-botDifficulty')?.value };
-    socket.emit('lobby:settings', { lobbyId: state.lobby?.id, settings });
-  });
-
   // Global kick handler
   window._kickPlayer = (targetId) => {
     socket.emit('lobby:kick', { lobbyId: state.lobby?.id, targetPlayerId: targetId });
@@ -145,7 +133,7 @@ export function renderLobby(container, socket, state, navigate) {
       state.lobby = lobby;
       state.lobbyPlayers = players;
       renderPlayers(players);
-      updateHostControls(players);
+      updateHostControls();
       const codeEl = container.querySelector('#code-display');
       if (codeEl) codeEl.textContent = lobby?.join_code || '----';
     },
@@ -163,11 +151,6 @@ export function renderLobby(container, socket, state, navigate) {
       chat?.destroy?.();
     },
   };
-}
-
-function gameLabel(type) {
-  const labels = { blackjack: 'Blackjack', poker: 'Poker', bs: 'BS', game_night: 'Game Night' };
-  return labels[type] || type || 'Game';
 }
 
 function escHtml(str) {

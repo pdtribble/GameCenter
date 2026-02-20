@@ -184,6 +184,21 @@ io.on('connection', (socket) => {
     catch (err) { handleSocketError(socket, 'game:action', err); }
   });
 
+  socket.on('game:ready', (data) => {
+    try { gameRunner.handleReady(socket, io, data); }
+    catch (err) { handleSocketError(socket, 'game:ready', err); }
+  });
+
+  socket.on('game:sit_out', (data) => {
+    try { gameRunner.handleSitOut(socket, io, data); }
+    catch (err) { handleSocketError(socket, 'game:sit_out', err); }
+  });
+
+  socket.on('game:sit_in', (data) => {
+    try { gameRunner.handleSitIn(socket, io, data); }
+    catch (err) { handleSocketError(socket, 'game:sit_in', err); }
+  });
+
   socket.on('game:chat', (data) => {
     try { gameRunner.handleChat(socket, io, data); }
     catch (err) { handleSocketError(socket, 'game:chat', err); }

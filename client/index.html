@@ -5,28 +5,39 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GameCenter</title>
   <link rel="stylesheet" href="/style.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#6366f1">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="GameCenter">
 </head>
 <body>
-  <!-- Announcement bar (hidden until needed) -->
-  <div id="announcement-bar" class="announcement-bar" style="display:none"></div>
+  <div id="app-root">
+    <!-- Announcement bar (hidden until needed) -->
+    <div id="announcement-bar" class="announcement-bar" style="display:none"></div>
 
-  <!-- Nav -->
-  <nav class="navbar" id="navbar" style="display:none">
-    <span class="navbar-brand">🎮 GameCenter</span>
-    <div class="navbar-actions">
-      <button class="btn btn-sm btn-secondary" id="nav-theme-toggle" title="Toggle dark mode">🌙</button>
-      <button class="btn btn-sm btn-secondary" id="nav-profile" style="display:none">👤 Profile</button>
-      <button class="btn btn-sm btn-secondary" id="nav-home">Home</button>
-    </div>
-  </nav>
+    <!-- Nav -->
+    <nav class="navbar" id="navbar" style="display:none">
+      <span class="navbar-brand">🎮 GameCenter</span>
+      <div class="navbar-actions">
+        <button class="btn btn-sm btn-secondary" id="nav-theme-toggle" title="Toggle dark mode">🌙</button>
+        <button class="btn btn-sm btn-secondary" id="nav-profile" style="display:none">👤 Profile</button>
+        <button class="btn btn-sm btn-secondary" id="nav-home">Home</button>
+      </div>
+    </nav>
 
-  <!-- Main app container — views render here -->
-  <div id="app"></div>
-
-  <!-- Toast container for achievements -->
-  <div id="toast-container"></div>
+    <!-- Main app container — views render here -->
+    <div id="app"></div>
+  </div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script type="module" src="/app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+      });
+    }
+  </script>
 </body>
 </html>

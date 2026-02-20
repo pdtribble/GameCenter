@@ -256,14 +256,30 @@ function handleStart(socket, io, data, gameRunner) {
     return socket.emit('server:error', { code: 'NOT_READY', message: 'All players must be ready.' });
   }
 
-  const gameReg = db.prepare('SELECT * FROM game_registry WHERE game_type = ?').get(lobby.game_type);
-  const activePlayers = players.filter(p => p.role !== 'spectator');
+  // Load game module to check bot fill capability
+  let mod;
+  try {
+    mod = require(require('path').join(__dirname, '..', 'games', lobby.game_type, 'index.js'));
+  } catch (_e) {
+    mod = null;
+  }
 
-  if (activePlayers.length < gameReg.min_players) {
-    return socket.emit('server:error', {
-      code: 'NOT_ENOUGH_PLAYERS',
-      message: `Need at least ${gameReg.min_players} players.`
-    });
+  const humanActivePlayers = players.filter(p => !p.is_bot && p.role !== 'spectator');
+  const totalActivePlayers = players.filter(p => p.role !== 'spectator');
+
+  // If bot fill is allowed, only need 1 human. Otherwise need min_players.
+  if (mod && mod.botFillAllowed) {
+    if (humanActivePlayers.length < 1) {
+      return socket.emit('server:error', { code: 'NOT_ENOUGH_PLAYERS', message: 'Need at least 1 player.' });
+    }
+  } else {
+    const gameReg = db.prepare('SELECT * FROM game_registry WHERE game_type = ?').get(lobby.game_type);
+    if (totalActivePlayers.length < (gameReg?.min_players || 2)) {
+      return socket.emit('server:error', {
+        code: 'NOT_ENOUGH_PLAYERS',
+        message: `Need at least ${gameReg?.min_players || 2} players.`,
+      });
+    }
   }
 
   db.prepare("UPDATE lobbies SET status = 'active' WHERE id = ?").run(lobbyId);
