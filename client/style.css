@@ -1712,6 +1712,7 @@ body.layout-phone .gc-nav-item.active { color: var(--gc-gold); }
 body.layout-phone .gc-nav-item.active .gc-nav-icon { filter: drop-shadow(0 0 5px var(--gc-gold)); }
 
 body.layout-phone .gc-sidebar { display: none; }
+body.layout-phone .gc-topbar { display: none; }
 body.layout-phone .gc-lobby-grid { display: flex; flex-direction: column; gap: 10px; }
 
 /* ─────────────────────────────────────────────────────────────────────────────
