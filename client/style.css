@@ -626,31 +626,20 @@ body.gc-view .navbar .btn-secondary:hover { background: var(--gc-border); color:
   100% { transform: scale(1); }
 }
 
-/* ── Blackjack table ────────────────────────────────────────────────────────── */
-.bj-table {
-  padding: var(--spacing-md);
-  max-width: 720px;
+/* ── Blackjack table (image-accurate D-shape felt) ───────────────────────────── */
+.bj-scene {
+  perspective: 1000px;
+  perspective-origin: 50% 30%;
+  position: relative;
+  width: 100%;
+  max-width: 900px;
   margin: 0 auto;
+  padding: var(--spacing-sm) 0;
 }
 
-.bj-table.bj-dimmed {
+.bj-scene.bj-dimmed {
   opacity: 0.6;
   pointer-events: none;
-}
-
-.bj-table-web {
-  background: linear-gradient(145deg, #0d5c2e 0%, #0a4d26 50%, #083d1e 100%);
-  border-radius: var(--radius-lg);
-  border: 4px solid #8b6914;
-  box-shadow: inset 0 0 60px rgba(0,0,0,0.2), 0 8px 24px rgba(0,0,0,0.3);
-  padding: var(--spacing-lg);
-  color: #f0f0f0;
-}
-
-.bj-table-phone {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-md);
 }
 
 .bj-round-label {
@@ -662,121 +651,242 @@ body.gc-view .navbar .btn-secondary:hover { background: var(--gc-border); color:
   margin-bottom: var(--spacing-xs);
 }
 
-.bj-table-web .bj-round-label { color: rgba(255,255,255,0.7); }
+.bj-table-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 900 / 520;
+  max-height: min(70vh, 520px);
+}
 
-.bj-dealer {
-  text-align: center;
-  margin-bottom: var(--spacing-lg);
+.bj-table {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform: rotateX(14deg);
+  transform-origin: top center;
+  transform-style: preserve-3d;
+}
+
+.bj-felt-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.bj-live {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.bj-live > * { pointer-events: auto; }
+
+/* Dealer zone — over dealer rectangle (~41% 4% 18% 17%) */
+.bj-dealer-zone {
+  position: absolute;
+  left: 41%;
+  top: 4%;
+  width: 18%;
+  height: 17%;
+  transform: translate(-50%, 0);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  pointer-events: none;
 }
 
 .bj-dealer-label {
-  font-size: var(--font-size-sm);
-  font-weight: 700;
-  color: var(--color-text-secondary);
-  margin-bottom: var(--spacing-sm);
+  font-family: 'DM Mono', monospace;
+  font-size: 0.6rem;
+  color: #c8a96e;
+  opacity: 0.9;
+  margin-bottom: 4px;
 }
 
-.bj-table-web .bj-dealer-label { color: rgba(255,255,255,0.9); }
+.bj-dealer-label.bj-bust { color: var(--color-danger); }
+
+.bj-dealer-cards .bj-card-fan {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 0;
+}
 
 .bj-dealer-cards {
-  justify-content: center;
-  gap: var(--spacing-sm);
-}
-
-.bj-dealer.bj-bust .bj-dealer-label { color: var(--color-danger); }
-
-.bj-players {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-md);
-}
-
-.bj-table-web .bj-players {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--spacing-md);
-}
-
-.bj-player-row {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xs);
-  padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--color-bg-secondary);
-  border: 2px solid var(--color-border);
-  border-radius: var(--radius-md);
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-
-.bj-table-web .bj-player-row {
-  background: rgba(0,0,0,0.25);
-  border-color: rgba(255,255,255,0.15);
-  border-radius: 12px;
-  min-width: 140px;
-  flex: 1 1 160px;
-  max-width: 200px;
-}
-
-.bj-player-row.bj-me {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 12px rgba(99, 102, 241, 0.3);
-}
-
-.bj-table-web .bj-player-row.bj-me { border-color: var(--gc-gold); box-shadow: 0 0 16px rgba(240,192,64,0.35); }
-
-.bj-player-row.bj-winner {
-  border-color: var(--color-success);
-  box-shadow: 0 0 12px rgba(34, 197, 94, 0.4);
-}
-
-.bj-player-row.bj-loser { opacity: 0.75; }
-.bj-player-row.bj-bust-row .bj-hand-total { color: var(--color-danger); }
-
-.bj-player-info {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 0;
+}
+
+/* Seats — positioned by % from renderer */
+.bj-seats {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.bj-seat {
+  position: absolute;
+  width: 12%;
+  min-width: 80px;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: var(--spacing-xs);
+  justify-content: center;
+  pointer-events: auto;
 }
 
-.bj-player-name { font-weight: 700; font-size: var(--font-size-md); }
-.bj-player-meta { font-size: var(--font-size-sm); color: var(--color-text-muted); }
-.bj-table-web .bj-player-meta { color: rgba(255,255,255,0.6); }
+.bj-seat-empty { pointer-events: none; }
 
-.bj-status-badge {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-card);
-  color: var(--color-text-secondary);
+.bj-seat-card-zone {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 120px;
 }
 
-.bj-bust-badge { background: var(--color-danger); color: #fff; }
-.bj-bj-badge { background: var(--color-success); color: #fff; }
-
-.bj-player-cards {
-  gap: var(--spacing-xs);
-  min-height: 52px;
+.bj-seat-card-zone .bj-card-fan {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 0;
+  min-height: 0;
 }
+
+.bj-seat-name {
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: #f0f0f0;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.bj-seat-meta {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.5rem;
+  color: rgba(255,255,255,0.7);
+}
+
+.bj-seat-status {
+  font-size: 0.55rem;
+  font-weight: 700;
+  color: var(--color-success);
+  margin-top: 2px;
+}
+
+.bj-seat-bust .bj-seat-status,
+.bj-seat-bust .bj-hand-total { color: var(--color-danger); }
+
+.bj-seat-winner .bj-seat-status { color: var(--color-success); }
+
+.bj-seat-me .bj-seat-name { color: #e8b84b; }
 
 .bj-hand-total {
-  font-size: var(--font-size-sm);
+  font-size: 0.65rem;
   font-weight: 700;
-  color: var(--color-text-primary);
+  color: #f0f0f0;
+  margin-top: 2px;
 }
 
-.bj-actions {
+/* Cards — fan layout +20px right +1px down */
+.bj-card {
+  width: 52px;
+  height: 76px;
+  border-radius: 4px;
+  background: #fafaf8;
+  border: 1px solid rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  transition: transform 0.1s ease;
+}
+
+.bj-card .card-rank { font-size: 1rem; line-height: 1; }
+.bj-card .card-suit { font-size: 0.85rem; line-height: 1; }
+
+.bj-card-red { color: var(--color-danger); }
+
+.bj-card-face-down {
+  background: #1b2c52;
+  color: rgba(255,255,255,0.08);
+  font-size: 1.4rem;
+  background-image: url("data:image/svg+xml,%3Csvg width='40' height='60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 0 L40 20 L20 60 L0 20 Z' fill='none' stroke='rgba(255,255,255,0.08)' stroke-width='1'/%3E%3Cpath d='M20 10 L30 25 L20 50 L10 25 Z' fill='none' stroke='rgba(255,255,255,0.08)'/%3E%3C/svg%3E");
+  background-size: 60% 60%;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+body.layout-phone .bj-card {
+  width: 44px;
+  height: 64px;
+  font-size: 0.75rem;
+}
+
+body.layout-phone .bj-card .card-rank { font-size: 0.85rem; }
+body.layout-phone .bj-card .card-suit { font-size: 0.7rem; }
+
+/* Action bar — bottom center over rail */
+.bj-action-bar {
+  position: absolute;
+  bottom: 6%;
+  left: 50%;
+  transform: translate(-50%, 0);
   display: flex;
   gap: var(--spacing-sm);
   justify-content: center;
-  margin-top: var(--spacing-lg);
   flex-wrap: wrap;
 }
 
 .bj-btn { min-width: 80px; }
+
+/* Rail avatars (phone: other players) */
+.bj-rail-avatars {
+  position: absolute;
+  bottom: 8%;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+}
+
+.bj-rail-avatar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.5rem;
+  color: rgba(255,255,255,0.8);
+  background: rgba(0,0,0,0.3);
+  padding: 4px 6px;
+  border-radius: 8px;
+}
+
+.bj-rail-avatar span { font-weight: 700; }
 
 /* ── In-game join code pill ─────────────────────────────────────────────────── */
 .game-join-code {
