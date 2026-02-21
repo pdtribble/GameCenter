@@ -58,6 +58,7 @@ function navigate(view, data = {}) {
   app.innerHTML = '';
 
   navbar.style.display = view === 'home' ? 'none' : 'flex';
+  document.body.classList.toggle('gc-view', view === 'profile' || view === 'lobby');
 
   switch (view) {
     case 'home':     currentView = renderHome(app, socket, state, navigate); break;

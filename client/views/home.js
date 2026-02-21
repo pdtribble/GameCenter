@@ -222,10 +222,13 @@ export function renderHome(container, socket, state, navigate) {
 
   // ── Pill rendering ────────────────────────────────────────────────────────
   function renderPills() {
-    const pills = [{ id: 'all', label: 'All' }, ...gamesList.map(g => ({ id: g.gameType, label: g.label }))];
+    const pills = [
+      { id: 'all', label: 'All', icon: '🎲' },
+      ...gamesList.map(g => ({ id: g.gameType, label: g.label, icon: g.icon || '🎮' })),
+    ];
     const html = pills.map((p, i) =>
       `<button class="gc-pill${p.id === activeFilter ? ' active' : ''}" data-filter="${escHtml(p.id)}"
-        style="animation-delay:${i * 40}ms">${escHtml(p.label)}</button>`
+        style="animation-delay:${i * 40}ms"><span class="gc-pill-icon">${escHtml(p.icon)}</span>${escHtml(p.label)}</button>`
     ).join('');
     if (pillsPhone) pillsPhone.innerHTML = html;
     if (pillsWeb) pillsWeb.innerHTML = html;
@@ -255,6 +258,7 @@ export function renderHome(container, socket, state, navigate) {
       const accent = gameAccent(lobby.gameType);
       const seats  = seatLabel(lobby.playerCount, lobby.maxPlayers);
       const isFull = lobby.playerCount >= lobby.maxPlayers;
+      const icon   = lobby.gameIcon || '🎮';
 
       // Avatar dots (up to 4 placeholder dots)
       const dots = Array.from({ length: Math.min(lobby.playerCount, 4) }, (_, i) =>
@@ -264,7 +268,7 @@ export function renderHome(container, socket, state, navigate) {
       return `<div class="gc-lobby-card" data-lobby-id="${escHtml(lobby.id)}"
           style="--gc-card-accent:${accent};animation-delay:${idx * 50}ms">
         <div class="gc-card-header">
-          <span class="gc-card-badge">${escHtml(lobby.gameLabel || lobby.gameType)}</span>
+          <span class="gc-card-badge"><span class="gc-card-badge-icon">${escHtml(icon)}</span>${escHtml(lobby.gameLabel || lobby.gameType)}</span>
           <span class="gc-card-name">${escHtml(lobby.hostName)}'s Lobby</span>
         </div>
         <div class="gc-card-host">Host: ${escHtml(lobby.hostName)}</div>
@@ -462,10 +466,6 @@ export function renderHome(container, socket, state, navigate) {
 
     backdrop.querySelector('#jm-cancel').addEventListener('click', () => closeModal(backdrop));
     backdrop.addEventListener('click', e => { if (e.target === backdrop) closeModal(backdrop); });
-
-    // Pre-fill from URL param if present
-    if (prefillCode) jmCode.focus();
-    else backdrop.querySelector('#jm-name').focus();
   }
 
   // ── Modal helpers ─────────────────────────────────────────────────────────

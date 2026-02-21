@@ -50,6 +50,7 @@ router.get('/api/games', (req, res) => {
         gameType: row.game_type,
         label: mod.name || row.display_name || row.game_type,
         description: mod.description || '',
+        icon: mod.icon || '🎮',
         minPlayers: mod.minPlayers || 2,
         maxPlayers: mod.maxPlayers || 8,
         botFillAllowed: !!mod.botFillAllowed,
@@ -57,7 +58,7 @@ router.get('/api/games', (req, res) => {
         config: mod.getSetupConfig ? mod.getSetupConfig() : [],
       };
     } catch (_e) {
-      return { gameType: row.game_type, label: row.game_type, description: '', minPlayers: 2, maxPlayers: 8, botFillAllowed: false, botFillMin: 2, config: [] };
+      return { gameType: row.game_type, label: row.game_type, description: '', icon: '🎮', minPlayers: 2, maxPlayers: 8, botFillAllowed: false, botFillMin: 2, config: [] };
     }
   });
   res.json(games);
@@ -88,16 +89,19 @@ router.get('/api/lobbies', (req, res) => {
     const result = lobbies.map(row => {
       let maxPlayers = maxByType[row.game_type] || 8;
       let label = row.game_type;
+      let icon = '🎮';
       try {
         const mod = require(require('path').join(__dirname, '../../games', row.game_type, 'index.js'));
         maxPlayers = mod.maxPlayers || maxPlayers;
         label = mod.name || label;
+        icon = mod.icon || icon;
       } catch (_e) {}
       return {
         id: row.id,
         joinCode: row.join_code,
         gameType: row.game_type,
         gameLabel: label,
+        gameIcon: icon,
         hostName: row.host_name || 'Unknown',
         playerCount: row.player_count || 0,
         maxPlayers,

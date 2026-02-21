@@ -57,6 +57,7 @@ module.exports = {
   // Metadata
   name: 'Highest Card',
   description: 'Each player flips a card. Highest card wins the round.',
+  icon: '🃏',
   minPlayers: 2,
   maxPlayers: 6,
   botFillAllowed: true,

@@ -1,41 +1,42 @@
-// Lobby view — waiting room, ready-up, chat
+// Lobby view — waiting room, ready-up, chat (gc-* design system)
 import { ChatComponent } from '../components/chat.js';
 
 export function renderLobby(container, socket, state, navigate) {
   const { lobby, lobbyPlayers } = state;
 
   container.innerHTML = `
-    <div class="page" style="max-width:660px">
-      <div class="card" style="margin-bottom:var(--spacing-md)">
-        <div class="flex items-center justify-between" style="margin-bottom:var(--spacing-md)">
-          <h1 class="section-heading" style="margin:0" id="lobby-title">
-            ${escHtml(lobby?.game_type || 'Game')} Lobby
-          </h1>
-          <span class="badge badge-accent" id="lobby-badge">${escHtml(lobby?.game_type || '')}</span>
-        </div>
-        <div class="join-code-display" style="margin-bottom:var(--spacing-md)">
-          <div>
-            <div class="text-muted" style="font-size:var(--font-size-sm);margin-bottom:2px">Join Code</div>
-            <div class="code" id="code-display">${escHtml(lobby?.join_code || '----')}</div>
+    <div class="gc-lobby-wait">
+      <div class="gc-lobby-wait-inner">
+        <div class="gc-lobby-wait-card">
+          <div class="gc-lobby-wait-title-row">
+            <h1 class="gc-lobby-wait-title" id="lobby-title">
+              ${escHtml(lobby?.game_type || 'Game')} Lobby
+            </h1>
+            <span class="gc-lobby-badge" id="lobby-badge">${escHtml(lobby?.game_type || '')}</span>
           </div>
-          <button class="btn btn-secondary btn-sm" id="btn-copy-link">📋 Copy Link</button>
+          <div class="gc-lobby-code-wrap">
+            <div>
+              <div class="gc-lobby-code-label">Join Code</div>
+              <div class="gc-lobby-code-value" id="code-display">${escHtml(lobby?.join_code || '----')}</div>
+            </div>
+            <button class="gc-lobby-copy-btn" id="btn-copy-link">📋 Copy Link</button>
+          </div>
+
+          <div id="bot-fill-banner" class="gc-lobby-bot-banner"></div>
+
+          <div id="players-list" class="gc-lobby-players-list"></div>
+          <div id="lobby-error" class="gc-lobby-error"></div>
+
+          <div class="gc-lobby-actions">
+            <button class="gc-btn-ghost" id="btn-ready">Ready</button>
+            <button class="gc-btn-gold" id="btn-start" style="display:none">Start Game</button>
+          </div>
         </div>
 
-        <div id="bot-fill-banner" class="text-muted" style="font-size:var(--font-size-sm);margin-bottom:var(--spacing-sm);display:none"></div>
-
-        <div id="players-list"></div>
-        <div id="lobby-error" class="error-msg" style="display:none;margin-top:var(--spacing-sm)"></div>
-
-        <div style="display:flex;gap:var(--spacing-sm);margin-top:var(--spacing-md)">
-          <button class="btn btn-secondary" id="btn-ready" style="flex:1">Ready</button>
-          <button class="btn btn-primary" id="btn-start" style="flex:1;display:none">Start Game</button>
+        <div class="gc-lobby-wait-card">
+          <h2 class="gc-lobby-chat-title">Chat</h2>
+          <div id="chat-mount"></div>
         </div>
-      </div>
-
-      <!-- Chat -->
-      <div class="card">
-        <h2 class="section-heading" style="font-size:var(--font-size-lg);margin-bottom:var(--spacing-sm)">Chat</h2>
-        <div id="chat-mount"></div>
       </div>
     </div>`;
 
@@ -68,23 +69,28 @@ export function renderLobby(container, socket, state, navigate) {
 
   function renderPlayers(players) {
     if (!players || players.length === 0) {
-      playersList.innerHTML = '<p class="text-muted">Waiting for players...</p>';
+      playersList.innerHTML = '<p class="gc-muted-text">Waiting for players...</p>';
       return;
     }
     const amIHost = state.myPlayerId === state.lobby?.host_player_id;
     playersList.innerHTML = players.map(p => {
       const isHost = p.id === state.lobby?.host_player_id;
       const isMe = p.id === state.myPlayerId;
-      return `<div class="player-item">
-        <div class="avatar" style="background:${escHtml(p.avatar_color || '#6366f1')}">${escHtml(p.avatar_emoji || '🎮')}</div>
-        <div class="player-info">
-          <div class="player-name">${escHtml(p.display_name)}${isHost ? ' 👑' : ''}${isMe ? ' (you)' : ''}</div>
-          <div class="player-meta">${p.role === 'spectator' ? '👁 Spectator' : (p.is_bot ? '🤖 Bot' : '👤 Player')}</div>
+      const avatarBg = p.avatar_color || '#6366f1';
+      return `<div class="gc-lobby-player-item">
+        <div class="gc-lobby-player-avatar" style="background:${escHtml(avatarBg)}">${escHtml(p.avatar_emoji || '🎮')}</div>
+        <div class="gc-lobby-player-info">
+          <div class="gc-lobby-player-name">${escHtml(p.display_name)}${isHost ? ' 👑' : ''}${isMe ? ' (you)' : ''}</div>
+          <div class="gc-lobby-player-meta">${p.role === 'spectator' ? '👁 Spectator' : (p.is_bot ? '🤖 Bot' : '👤 Player')}</div>
         </div>
-        <div class="ready-dot${p.is_ready ? ' is-ready' : ''}" title="${p.is_ready ? 'Ready' : 'Not ready'}"></div>
-        ${amIHost && !isMe && p.role !== 'spectator' ? `<button class="btn btn-danger btn-sm" onclick="window._kickPlayer('${p.id}')">Kick</button>` : ''}
+        <div class="gc-lobby-ready-dot${p.is_ready ? ' is-ready' : ''}" title="${p.is_ready ? 'Ready' : 'Not ready'}"></div>
+        ${amIHost && !isMe && p.role !== 'spectator' ? `<button class="gc-lobby-kick-btn" data-kick="${escHtml(p.id)}">Kick</button>` : ''}
       </div>`;
     }).join('');
+
+    playersList.querySelectorAll('.gc-lobby-kick-btn').forEach(btn => {
+      btn.addEventListener('click', () => { window._kickPlayer(btn.dataset.kick); });
+    });
   }
 
   function updateHostControls() {
@@ -113,7 +119,8 @@ export function renderLobby(container, socket, state, navigate) {
   readyBtn.addEventListener('click', () => {
     isReady = !isReady;
     readyBtn.textContent = isReady ? 'Unready' : 'Ready';
-    readyBtn.className = isReady ? 'btn btn-success' : 'btn btn-secondary';
+    readyBtn.classList.toggle('gc-btn-gold', isReady);
+    readyBtn.classList.toggle('gc-btn-ghost', !isReady);
     socket.emit(isReady ? 'lobby:ready' : 'lobby:unready', { lobbyId: state.lobby?.id });
   });
 
