@@ -76,7 +76,7 @@ function isRedSuit(suit) {
 }
 
 function renderCardEl(card, faceDown = false, index = 0) {
-  const offset = `translate(${index * 20}px, ${index}px)`;
+  const offset = `translate(${index * 38}%, ${index * 1.3}%)`;
   if (faceDown || (card && card.hole)) {
     return `<div class="bj-card bj-card-face-down" style="transform: ${offset}">🂠</div>`;
   }

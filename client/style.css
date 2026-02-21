@@ -656,6 +656,8 @@ body.gc-view .navbar .btn-secondary:hover { background: var(--gc-border); color:
   width: 100%;
   aspect-ratio: 900 / 520;
   max-height: min(70vh, 520px);
+  container-type: size;
+  container-name: bj-table;
 }
 
 .bj-table {
@@ -735,7 +737,6 @@ body.gc-view .navbar .btn-secondary:hover { background: var(--gc-border); color:
 .bj-seat {
   position: absolute;
   width: 12%;
-  min-width: 80px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -755,7 +756,6 @@ body.gc-view .navbar .btn-secondary:hover { background: var(--gc-border); color:
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
-  min-width: 120px;
 }
 
 .bj-seat-card-zone .bj-card-fan {
@@ -805,10 +805,8 @@ body.gc-view .navbar .btn-secondary:hover { background: var(--gc-border); color:
   margin-top: 2px;
 }
 
-/* Cards — fan layout +20px right +1px down */
+/* Cards — size scales with table via container queries; fan offset is % in renderer */
 .bj-card {
-  width: 52px;
-  height: 76px;
   border-radius: 4px;
   background: #fafaf8;
   border: 1px solid rgba(0,0,0,0.1);
@@ -817,35 +815,56 @@ body.gc-view .navbar .btn-secondary:hover { background: var(--gc-border); color:
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: 0.9rem;
   font-weight: 700;
   flex-shrink: 0;
   transition: transform 0.1s ease;
 }
-
-.bj-card .card-rank { font-size: 1rem; line-height: 1; }
-.bj-card .card-suit { font-size: 0.85rem; line-height: 1; }
 
 .bj-card-red { color: var(--color-danger); }
 
 .bj-card-face-down {
   background: #1b2c52;
   color: rgba(255,255,255,0.08);
-  font-size: 1.4rem;
   background-image: url("data:image/svg+xml,%3Csvg width='40' height='60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 0 L40 20 L20 60 L0 20 Z' fill='none' stroke='rgba(255,255,255,0.08)' stroke-width='1'/%3E%3Cpath d='M20 10 L30 25 L20 50 L10 25 Z' fill='none' stroke='rgba(255,255,255,0.08)'/%3E%3C/svg%3E");
   background-size: 60% 60%;
   background-position: center;
   background-repeat: no-repeat;
 }
 
-body.layout-phone .bj-card {
-  width: 44px;
-  height: 64px;
-  font-size: 0.75rem;
+@container bj-table (min-width: 200px) {
+  .bj-table-wrap .bj-card {
+    width: 6.9cqw;
+    height: 16.9cqh;
+    min-width: 24px;
+    min-height: 36px;
+    font-size: 1.4cqh;
+  }
+  .bj-table-wrap .bj-card .card-rank { font-size: 1.6cqh; line-height: 1; }
+  .bj-table-wrap .bj-card .card-suit { font-size: 1.35cqh; line-height: 1; }
+  .bj-table-wrap .bj-card-face-down { font-size: 2.2cqh; }
+  .bj-table-wrap .bj-seat { min-width: 8.9cqw; }
+  .bj-table-wrap .bj-seat-card-zone { min-width: 13.3cqw; }
+  .bj-table-wrap .bj-action-bar { gap: 1.5cqw; }
+  .bj-table-wrap .bj-btn {
+    min-width: 8.9cqw;
+    padding: 1.5cqh 2cqw;
+    font-size: 1.5cqh;
+  }
 }
 
-body.layout-phone .bj-card .card-rank { font-size: 0.85rem; }
-body.layout-phone .bj-card .card-suit { font-size: 0.7rem; }
+@supports not (container-type: size) {
+  .bj-card {
+    width: 52px;
+    height: 76px;
+    font-size: 0.9rem;
+  }
+  .bj-card .card-rank { font-size: 1rem; line-height: 1; }
+  .bj-card .card-suit { font-size: 0.85rem; line-height: 1; }
+  .bj-card-face-down { font-size: 1.4rem; }
+  .bj-seat { min-width: 80px; }
+  .bj-seat-card-zone { min-width: 120px; }
+  .bj-btn { min-width: 80px; }
+}
 
 /* Action bar — bottom center over rail */
 .bj-action-bar {
@@ -858,8 +877,6 @@ body.layout-phone .bj-card .card-suit { font-size: 0.7rem; }
   justify-content: center;
   flex-wrap: wrap;
 }
-
-.bj-btn { min-width: 80px; }
 
 /* Rail avatars (phone: other players) */
 .bj-rail-avatars {
@@ -887,6 +904,34 @@ body.layout-phone .bj-card .card-suit { font-size: 0.7rem; }
 }
 
 .bj-rail-avatar span { font-weight: 700; }
+
+/* Blackjack portrait lock — overlay when game is Blackjack and view is portrait */
+#blackjack-rotate-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  pointer-events: auto;
+}
+
+#blackjack-rotate-overlay.game-rotate-visible {
+  display: flex;
+}
+
+#blackjack-rotate-overlay .game-rotate-message {
+  font-size: clamp(1.5rem, 6vw, 2.5rem);
+  font-weight: 800;
+  color: #f0f0f8;
+  text-align: center;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+  letter-spacing: 0.02em;
+}
 
 /* ── In-game join code pill ─────────────────────────────────────────────────── */
 .game-join-code {

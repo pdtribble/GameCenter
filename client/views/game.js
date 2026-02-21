@@ -1,5 +1,6 @@
 // Game view — in-game shell, delegates to game renderers
 import { ChatComponent } from '../components/chat.js';
+import { isPortrait } from '../app.js';
 
 const rendererCache = {};
 
@@ -16,7 +17,7 @@ export function renderGame(container, socket, state, navigate) {
   const joinCode = state.joinCode || state.lobby?.join_code || '';
 
   container.innerHTML = `
-    <div style="display:flex;flex-direction:column;height:calc(100vh - 52px)">
+    <div class="game-view-wrap" style="position:relative;display:flex;flex-direction:column;height:calc(100vh - 52px)">
       <div id="game-renderer-area" style="flex:1;overflow:auto;padding:var(--spacing-md);position:relative"></div>
 
       <!-- Intermission overlay — shown when enginePhase === 'intermission' -->
@@ -39,6 +40,11 @@ export function renderGame(container, socket, state, navigate) {
       <div id="chat-panel" style="border-top:1px solid var(--color-border);display:none">
         <div id="chat-mount" style="padding:var(--spacing-sm)"></div>
       </div>
+
+      <!-- Blackjack portrait lock — blur + Rotate Screen when Blackjack and portrait -->
+      <div id="blackjack-rotate-overlay">
+        <span class="game-rotate-message">Rotate Screen</span>
+      </div>
     </div>`;
 
   const rendererArea = container.querySelector('#game-renderer-area');
@@ -47,9 +53,19 @@ export function renderGame(container, socket, state, navigate) {
   const intermissionStatus = container.querySelector('#intermission-status');
   const btnReady = container.querySelector('#btn-ready');
   const btnSitOut = container.querySelector('#btn-sit-out');
+  const rotateOverlay = container.querySelector('#blackjack-rotate-overlay');
 
   // Fix overlay — hide it by default (inline style above has display:flex which overrides display:none)
   intermissionOverlay.style.display = 'none';
+
+  function updateRotateOverlay() {
+    const show = gameType === 'blackjack' && isPortrait();
+    rotateOverlay.classList.toggle('game-rotate-visible', show);
+  }
+  updateRotateOverlay();
+  const onResize = () => updateRotateOverlay();
+  window.addEventListener('resize', onResize);
+  window.addEventListener('orientationchange', onResize);
 
   // Join code copy
   const joinCodeEl = container.querySelector('#game-join-code');
@@ -156,7 +172,12 @@ export function renderGame(container, socket, state, navigate) {
       bar.style.display = 'block';
       setTimeout(() => { bar.style.display = 'none'; }, 4000);
     },
-    destroy() { chat?.destroy?.(); renderer?.destroy?.(); },
+    destroy() {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+      chat?.destroy?.();
+      renderer?.destroy?.();
+    },
   };
 }
 
