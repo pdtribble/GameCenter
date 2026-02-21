@@ -128,6 +128,7 @@ function migrate() {
     VALUES (?, ?, ?, ?)
   `);
   seedGames.run('highest-card', 'Highest Card', 2, 6);
+  seedGames.run('blackjack', 'Blackjack', 1, 6);
 
   console.log('[db] Schema migration complete');
 }

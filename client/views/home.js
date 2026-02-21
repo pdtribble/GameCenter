@@ -4,7 +4,7 @@
 // Accent colors per game type (fallback to purple)
 const GAME_ACCENTS = {
   'highest-card': '#9060ff',
-  'blackjack':    '#4090ff',
+  'blackjack':    '#30d890',
   'poker':        '#30d890',
   'bs':           '#ff4560',
 };

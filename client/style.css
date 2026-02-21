@@ -626,8 +626,157 @@ body.gc-view .navbar .btn-secondary:hover { background: var(--gc-border); color:
   100% { transform: scale(1); }
 }
 
-/* ── Blackjack-specific styles removed (renderer deleted) ───────────────────── */
+/* ── Blackjack table ────────────────────────────────────────────────────────── */
+.bj-table {
+  padding: var(--spacing-md);
+  max-width: 720px;
+  margin: 0 auto;
+}
 
+.bj-table.bj-dimmed {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.bj-table-web {
+  background: linear-gradient(145deg, #0d5c2e 0%, #0a4d26 50%, #083d1e 100%);
+  border-radius: var(--radius-lg);
+  border: 4px solid #8b6914;
+  box-shadow: inset 0 0 60px rgba(0,0,0,0.2), 0 8px 24px rgba(0,0,0,0.3);
+  padding: var(--spacing-lg);
+  color: #f0f0f0;
+}
+
+.bj-table-phone {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.bj-round-label {
+  text-align: center;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin-bottom: var(--spacing-xs);
+}
+
+.bj-table-web .bj-round-label { color: rgba(255,255,255,0.7); }
+
+.bj-dealer {
+  text-align: center;
+  margin-bottom: var(--spacing-lg);
+}
+
+.bj-dealer-label {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-sm);
+}
+
+.bj-table-web .bj-dealer-label { color: rgba(255,255,255,0.9); }
+
+.bj-dealer-cards {
+  justify-content: center;
+  gap: var(--spacing-sm);
+}
+
+.bj-dealer.bj-bust .bj-dealer-label { color: var(--color-danger); }
+
+.bj-players {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.bj-table-web .bj-players {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--spacing-md);
+}
+
+.bj-player-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-bg-secondary);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.bj-table-web .bj-player-row {
+  background: rgba(0,0,0,0.25);
+  border-color: rgba(255,255,255,0.15);
+  border-radius: 12px;
+  min-width: 140px;
+  flex: 1 1 160px;
+  max-width: 200px;
+}
+
+.bj-player-row.bj-me {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.3);
+}
+
+.bj-table-web .bj-player-row.bj-me { border-color: var(--gc-gold); box-shadow: 0 0 16px rgba(240,192,64,0.35); }
+
+.bj-player-row.bj-winner {
+  border-color: var(--color-success);
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.4);
+}
+
+.bj-player-row.bj-loser { opacity: 0.75; }
+.bj-player-row.bj-bust-row .bj-hand-total { color: var(--color-danger); }
+
+.bj-player-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.bj-player-name { font-weight: 700; font-size: var(--font-size-md); }
+.bj-player-meta { font-size: var(--font-size-sm); color: var(--color-text-muted); }
+.bj-table-web .bj-player-meta { color: rgba(255,255,255,0.6); }
+
+.bj-status-badge {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-card);
+  color: var(--color-text-secondary);
+}
+
+.bj-bust-badge { background: var(--color-danger); color: #fff; }
+.bj-bj-badge { background: var(--color-success); color: #fff; }
+
+.bj-player-cards {
+  gap: var(--spacing-xs);
+  min-height: 52px;
+}
+
+.bj-hand-total {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.bj-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  justify-content: center;
+  margin-top: var(--spacing-lg);
+  flex-wrap: wrap;
+}
+
+.bj-btn { min-width: 80px; }
 
 /* ── In-game join code pill ─────────────────────────────────────────────────── */
 .game-join-code {
