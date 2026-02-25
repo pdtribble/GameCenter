@@ -59,8 +59,9 @@ function navigate(view, data = {}) {
   const navbar = document.getElementById('navbar');
   app.innerHTML = '';
 
-  navbar.style.display = view === 'home' ? 'none' : 'flex';
+  navbar.style.display = 'flex';
   document.body.classList.toggle('gc-view', view === 'profile' || view === 'lobby' || view === 'singleplayer');
+  updateNavTabs(view);
 
   switch (view) {
     case 'home':         currentView = renderHome(app, socket, state, navigate); break;
@@ -199,10 +200,21 @@ function applyTheme(theme) {
   if (btn) btn.textContent = theme === 'dark' ? '☀️' : '🌙';
 }
 
-// ── Nav buttons ───────────────────────────────────────────────────────────────
-document.getElementById('nav-home').addEventListener('click', () => navigate('home'));
+// ── Nav tabs ──────────────────────────────────────────────────────────────────
+const SOLO_VIEWS = new Set(['singleplayer', 'minesweeper']);
+
+function updateNavTabs(view) {
+  const multi = document.getElementById('nav-tab-multi');
+  const solo  = document.getElementById('nav-tab-solo');
+  if (!multi || !solo) return;
+  const isSolo = SOLO_VIEWS.has(view);
+  multi.className = 'btn btn-sm ' + (isSolo ? 'btn-secondary' : 'btn-primary');
+  solo.className  = 'btn btn-sm ' + (isSolo ? 'btn-primary'   : 'btn-secondary');
+}
+
+document.getElementById('nav-tab-multi').addEventListener('click', () => navigate('home'));
+document.getElementById('nav-tab-solo').addEventListener('click', () => navigate('singleplayer'));
 document.getElementById('nav-profile').addEventListener('click', () => navigate('profile'));
-document.getElementById('nav-solo').addEventListener('click', () => navigate('singleplayer'));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function showSystemMessage(msg) {

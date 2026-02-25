@@ -20,13 +20,15 @@
     <div id="announcement-bar" class="announcement-bar" style="display:none"></div>
 
     <!-- Nav -->
-    <nav class="navbar" id="navbar" style="display:none">
-      <span class="navbar-brand">🎮 GameCenter</span>
+    <nav class="navbar" id="navbar">
+      <div class="navbar-actions" style="gap:4px">
+        <button class="btn btn-sm btn-primary" id="nav-tab-multi">🎮 Multiplayer</button>
+        <button class="btn btn-sm btn-secondary" id="nav-tab-solo">💣 Solo</button>
+      </div>
+      <div style="flex:1"></div>
       <div class="navbar-actions">
         <button class="btn btn-sm btn-secondary" id="nav-theme-toggle" title="Toggle dark mode">🌙</button>
         <button class="btn btn-sm btn-secondary" id="nav-profile" style="display:none">👤 Profile</button>
-        <button class="btn btn-sm btn-secondary" id="nav-solo">Solo</button>
-        <button class="btn btn-sm btn-secondary" id="nav-home">Home</button>
       </div>
     </nav>
 
