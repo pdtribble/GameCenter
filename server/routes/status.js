@@ -137,6 +137,36 @@ router.get('/api/me/stats', (req, res) => {
       FROM game_results WHERE player_id = ?
     `).get(playerId);
 
+    // Per-game-type multiplayer breakdown
+    const mpRows = db.prepare(`
+      SELECT gs.game_type,
+        COUNT(*) AS played,
+        SUM(CASE WHEN gr.result = 'win' THEN 1 ELSE 0 END) AS wins,
+        SUM(CASE WHEN gr.result = 'loss' OR gr.result = 'lose' THEN 1 ELSE 0 END) AS losses
+      FROM game_results gr
+      JOIN game_sessions gs ON gs.id = gr.session_id
+      WHERE gr.player_id = ?
+      GROUP BY gs.game_type
+    `).all(playerId);
+    const multiplayer = {};
+    for (const r of mpRows) {
+      multiplayer[r.game_type] = { played: r.played, wins: r.wins, losses: r.losses };
+    }
+
+    // Singleplayer breakdown
+    const spTotal = db.prepare("SELECT COUNT(*) AS c FROM sp_game_history WHERE player_id = ? AND game_type = 'minesweeper'").get(playerId).c;
+    const spWins  = db.prepare("SELECT COUNT(*) AS c FROM sp_game_history WHERE player_id = ? AND game_type = 'minesweeper' AND result = 'win'").get(playerId).c;
+    const bestDiffs = {};
+    for (const diff of ['beginner', 'intermediate', 'expert']) {
+      const row = db.prepare(
+        "SELECT stats FROM sp_game_history WHERE player_id = ? AND game_type = 'minesweeper' AND result = 'win' AND mode = ? ORDER BY json_extract(stats,'$.timeSeconds') ASC LIMIT 1"
+      ).get(playerId, diff);
+      if (row) bestDiffs[diff] = JSON.parse(row.stats).timeSeconds ?? null;
+    }
+    const singleplayer = {
+      minesweeper: { played: spTotal, wins: spWins, bestTimes: bestDiffs },
+    };
+
     res.json({
       loggedIn: true,
       playerId: player.id,
@@ -146,6 +176,8 @@ router.get('/api/me/stats', (req, res) => {
       gamesPlayed: stats?.games_played || 0,
       wins: stats?.wins || 0,
       onlineCount,
+      multiplayer,
+      singleplayer,
     });
   } catch (err) {
     console.error('[api/me/stats]', err);

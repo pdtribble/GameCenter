@@ -11,11 +11,18 @@ import { renderMinesweeper } from './views/minesweeper.js';
 const LANDSCAPE_W = 1280, LANDSCAPE_H = 720;
 const PORTRAIT_W  = 414,  PORTRAIT_H  = 896;
 
+function getNavHeight() {
+  const nav = document.getElementById('bottom-nav');
+  return (!nav || nav.classList.contains('nav-hidden')) ? 0 : nav.offsetHeight;
+}
+
 function applyScale() {
   const portrait = window.innerWidth < window.innerHeight || window.innerWidth < 600;
   const baseW = portrait ? PORTRAIT_W : LANDSCAPE_W;
   const baseH = portrait ? PORTRAIT_H : LANDSCAPE_H;
-  const scale = Math.min(window.innerWidth / baseW, window.innerHeight / baseH);
+  const navH = getNavHeight();
+  const availH = window.innerHeight - navH;
+  const scale = Math.min(window.innerWidth / baseW, availH / baseH);
   const root = document.getElementById('app-root');
   if (!root) return;
   root.style.width  = baseW + 'px';
@@ -23,7 +30,7 @@ function applyScale() {
   root.style.transform = `scale(${scale})`;
   root.style.transformOrigin = 'top left';
   root.style.left = Math.round((window.innerWidth  - baseW * scale) / 2) + 'px';
-  root.style.top  = Math.round((window.innerHeight - baseH * scale) / 2) + 'px';
+  root.style.top  = Math.round((availH - baseH * scale) / 2) + 'px';
   document.documentElement.dataset.layout = portrait ? 'portrait' : 'landscape';
   document.body.classList.toggle('layout-phone', portrait);
   document.body.classList.toggle('layout-web', !portrait);
@@ -34,6 +41,35 @@ applyScale();
 
 export function isPortrait() {
   return document.documentElement.dataset.layout === 'portrait';
+}
+
+// ── Nav visibility ────────────────────────────────────────────────────────────
+export function hideNav() {
+  const nav = document.getElementById('bottom-nav');
+  if (nav) nav.classList.add('nav-hidden');
+  applyScale();
+}
+
+export function showNav() {
+  const nav = document.getElementById('bottom-nav');
+  if (nav) nav.classList.remove('nav-hidden');
+  applyScale();
+}
+
+// Views that get the full screen (bottom nav hidden)
+const FULLSCREEN_VIEWS = new Set(['game', 'minesweeper', 'lobby', 'postgame']);
+
+// Top-level tabs and which view each maps to
+const TOP_LEVEL = { home: 'home', singleplayer: 'singleplayer', profile: 'profile' };
+
+function updateBottomNav(view) {
+  document.querySelectorAll('#bottom-nav .nav-tab').forEach(btn => {
+    const tabView = btn.dataset.view;
+    const isActive = tabView === view ||
+      (tabView === 'home' && (view === 'lobby' || view === 'postgame')) ||
+      (tabView === 'singleplayer' && view === 'minesweeper');
+    btn.classList.toggle('active', isActive);
+  });
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -56,12 +92,14 @@ function navigate(view, data = {}) {
   if (typeof currentView?.destroy === 'function') currentView.destroy();
 
   const app = document.getElementById('app');
-  const navbar = document.getElementById('navbar');
   app.innerHTML = '';
 
-  navbar.style.display = 'flex';
-  document.body.classList.toggle('gc-view', view === 'profile' || view === 'lobby' || view === 'singleplayer');
-  updateNavTabs(view);
+  if (FULLSCREEN_VIEWS.has(view)) {
+    hideNav();
+  } else {
+    showNav();
+  }
+  updateBottomNav(view);
 
   switch (view) {
     case 'home':         currentView = renderHome(app, socket, state, navigate); break;
@@ -71,20 +109,17 @@ function navigate(view, data = {}) {
     case 'postgame':     currentView = renderPostgame(app, socket, state, navigate, data); break;
     case 'singleplayer': currentView = renderSingleplayer(app, socket, state, navigate); break;
     case 'minesweeper':  currentView = renderMinesweeper(app, socket, state, navigate, data); break;
-    default:             app.innerHTML = '<p style="padding:2rem">Unknown view.</p>';
+    default:             app.innerHTML = '<p style="padding:2rem;color:#fff">Unknown view.</p>';
   }
 }
 
 // ── Socket event handlers ─────────────────────────────────────────────────────
 socket.on('connect', () => {
   console.log('[socket] connected', socket.id);
-
-  // Attempt to rejoin any active game session (fires server:game_started if found)
   socket.emit('client:rejoin_check');
 
   const params = new URLSearchParams(location.search);
   const joinCode = params.get('join');
-
   if (joinCode) {
     navigate('home', { prefillJoinCode: joinCode });
   } else {
@@ -99,7 +134,6 @@ socket.on('disconnect', () => {
 
 socket.on('server:lobby_created', ({ lobby }) => {
   state.lobby = lobby;
-  // Navigation handled by server:lobby_joined
 });
 
 socket.on('server:lobby_joined', ({ lobby, players, myPlayerId }) => {
@@ -183,38 +217,25 @@ socket.on('server:error', ({ code, message }) => {
   }
 });
 
-// ── Theme toggle ──────────────────────────────────────────────────────────────
-const savedTheme = localStorage.getItem('gc_theme') || 'light';
-applyTheme(savedTheme);
-
-document.getElementById('nav-theme-toggle').addEventListener('click', () => {
-  const current = document.documentElement.dataset.theme || 'light';
-  const next = current === 'dark' ? 'light' : 'dark';
-  applyTheme(next);
-  localStorage.setItem('gc_theme', next);
+// ── Bottom nav tab clicks ─────────────────────────────────────────────────────
+document.querySelectorAll('#bottom-nav .nav-tab').forEach(btn => {
+  btn.addEventListener('click', () => navigate(btn.dataset.view));
 });
+
+// ── Theme toggle (moved into profile settings, but keep key available) ────────
+const savedTheme = localStorage.getItem('gc_theme') || 'dark';
+applyTheme(savedTheme);
 
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
-  const btn = document.getElementById('nav-theme-toggle');
-  if (btn) btn.textContent = theme === 'dark' ? '☀️' : '🌙';
 }
 
-// ── Nav tabs ──────────────────────────────────────────────────────────────────
-const SOLO_VIEWS = new Set(['singleplayer', 'minesweeper']);
-
-function updateNavTabs(view) {
-  const multi = document.getElementById('nav-tab-multi');
-  const solo  = document.getElementById('nav-tab-solo');
-  if (!multi || !solo) return;
-  const isSolo = SOLO_VIEWS.has(view);
-  multi.className = 'btn btn-sm ' + (isSolo ? 'btn-secondary' : 'btn-primary');
-  solo.className  = 'btn btn-sm ' + (isSolo ? 'btn-primary'   : 'btn-secondary');
+export function toggleTheme() {
+  const current = document.documentElement.dataset.theme || 'dark';
+  const next = current === 'dark' ? 'light' : 'dark';
+  applyTheme(next);
+  localStorage.setItem('gc_theme', next);
 }
-
-document.getElementById('nav-tab-multi').addEventListener('click', () => navigate('home'));
-document.getElementById('nav-tab-solo').addEventListener('click', () => navigate('singleplayer'));
-document.getElementById('nav-profile').addEventListener('click', () => navigate('profile'));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function showSystemMessage(msg) {

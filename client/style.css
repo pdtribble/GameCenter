@@ -85,6 +85,11 @@ a:hover { color: var(--color-accent-hover); }
   flex-direction: column;
 }
 
+/* ── Suppress home view's internal nav (replaced by global #bottom-nav) ─────── */
+.gc-bottom-nav { display: none !important; }
+.gc-sidebar-nav-item { display: none !important; }
+.gc-di-spacer { display: none !important; }
+
 /* ── Cards ──────────────────────────────────────────────────────────────────── */
 .card {
   background: var(--color-bg-card);

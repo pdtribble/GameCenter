@@ -143,6 +143,16 @@ function migrate() {
 
     CREATE INDEX IF NOT EXISTS idx_sp_saves_player ON sp_game_saves(player_id, game_type);
     CREATE INDEX IF NOT EXISTS idx_sp_history_player ON sp_game_history(player_id, game_type);
+
+    CREATE TABLE IF NOT EXISTS mp_game_stats (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      player_id    TEXT NOT NULL,
+      game_type    TEXT NOT NULL,
+      result       TEXT NOT NULL,
+      stats        TEXT NOT NULL,
+      played_at    INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_mp_stats_player ON mp_game_stats(player_id, game_type);
   `);
 
   // Seed game registry — modules define their own metadata via exports;

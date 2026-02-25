@@ -15,13 +15,31 @@ export function renderGame(container, socket, state, navigate) {
   const { session, gameState } = state;
   const gameType = gameState?.gameType;
   const joinCode = state.joinCode || state.lobby?.join_code || '';
+  const gameName = gameType
+    ? gameType.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+    : 'Game';
 
   container.innerHTML = `
-    <div class="game-view-wrap" style="position:relative;display:flex;flex-direction:column;height:calc(100vh - 52px)">
-      <div id="game-renderer-area" style="flex:1;overflow:auto;padding:var(--spacing-md);position:relative"></div>
+    <div style="position:relative;display:flex;flex-direction:column;height:100%">
 
-      <!-- Intermission overlay — shown when enginePhase === 'intermission' -->
-      <div id="intermission-overlay" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,0.6);z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--spacing-md)">
+      <!-- Dark top bar (44px) -->
+      <div style="height:44px;flex-shrink:0;background:rgba(0,0,0,0.85);border-bottom:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;padding:0 10px;gap:6px;z-index:5;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)">
+        <button id="btn-back" style="background:none;border:none;color:rgba(255,255,255,0.45);font-family:'DM Mono','Courier New',monospace;font-size:0.68rem;letter-spacing:0.5px;cursor:pointer;padding:10px 6px;white-space:nowrap;-webkit-tap-highlight-color:transparent">← BACK</button>
+        <div style="flex:1;text-align:center;font-family:'DM Mono','Courier New',monospace;font-size:0.68rem;letter-spacing:3px;color:rgba(255,255,255,0.35);text-transform:uppercase;pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(gameName)}</div>
+        ${joinCode ? `<span id="game-join-code" title="Tap to copy join code" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;padding:3px 7px;font-family:'DM Mono','Courier New',monospace;font-size:0.62rem;color:rgba(255,255,255,0.4);cursor:pointer;letter-spacing:1px;white-space:nowrap;-webkit-tap-highlight-color:transparent">🔑 ${escHtml(joinCode)}</span>` : ''}
+        <button id="btn-toggle-chat" style="background:none;border:none;color:rgba(255,255,255,0.4);cursor:pointer;padding:10px 6px;font-size:1rem;line-height:1;flex-shrink:0;-webkit-tap-highlight-color:transparent" title="Toggle chat">💬</button>
+      </div>
+
+      <!-- Game renderer area -->
+      <div id="game-renderer-area" style="flex:1;overflow:hidden;position:relative"></div>
+
+      <!-- Chat panel (slides in from bottom) -->
+      <div id="chat-panel" style="display:none;border-top:1px solid rgba(255,255,255,0.07);background:rgba(5,10,5,0.92);max-height:180px;overflow-y:auto">
+        <div id="chat-mount" style="padding:8px"></div>
+      </div>
+
+      <!-- Intermission overlay -->
+      <div id="intermission-overlay" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,0.65);z-index:10;flex-direction:column;align-items:center;justify-content:center;gap:var(--spacing-md)">
         <div class="card" style="text-align:center;min-width:260px">
           <h2 style="margin-bottom:var(--spacing-sm)">Round Over</h2>
           <div id="intermission-status" class="text-muted" style="margin-bottom:var(--spacing-md)">Waiting for players...</div>
@@ -32,35 +50,28 @@ export function renderGame(container, socket, state, navigate) {
         </div>
       </div>
 
-      <div style="border-top:1px solid var(--color-border);padding:var(--spacing-sm) var(--spacing-md);display:flex;gap:var(--spacing-sm);align-items:center;background:var(--color-bg-card)">
-        ${joinCode ? `<span class="game-join-code" id="game-join-code" title="Click to copy join code">🔑 ${escHtml(joinCode)}</span>` : ''}
-        <div style="flex:1"></div>
-        <button class="btn btn-secondary btn-sm" id="btn-toggle-chat">💬 Chat</button>
-      </div>
-      <div id="chat-panel" style="border-top:1px solid var(--color-border);display:none">
-        <div id="chat-mount" style="padding:var(--spacing-sm)"></div>
-      </div>
-
-      <!-- Blackjack portrait lock — blur + Rotate Screen when Blackjack and portrait -->
+      <!-- Portrait lock overlay (blackjack) -->
       <div id="blackjack-rotate-overlay">
         <span class="game-rotate-message">Rotate Screen</span>
       </div>
+
     </div>`;
 
-  const rendererArea = container.querySelector('#game-renderer-area');
-  const chatMount = container.querySelector('#chat-mount');
-  const intermissionOverlay = container.querySelector('#intermission-overlay');
-  const intermissionStatus = container.querySelector('#intermission-status');
-  const btnReady = container.querySelector('#btn-ready');
-  const btnSitOut = container.querySelector('#btn-sit-out');
-  const rotateOverlay = container.querySelector('#blackjack-rotate-overlay');
+  const rendererArea   = container.querySelector('#game-renderer-area');
+  const chatMount      = container.querySelector('#chat-mount');
+  const chatPanel      = container.querySelector('#chat-panel');
+  const intermissionOverlay  = container.querySelector('#intermission-overlay');
+  const intermissionStatus   = container.querySelector('#intermission-status');
+  const btnReady       = container.querySelector('#btn-ready');
+  const btnSitOut      = container.querySelector('#btn-sit-out');
+  const rotateOverlay  = container.querySelector('#blackjack-rotate-overlay');
 
-  // Fix overlay — hide it by default (inline style above has display:flex which overrides display:none)
-  intermissionOverlay.style.display = 'none';
+  // Back button → home
+  container.querySelector('#btn-back').addEventListener('click', () => navigate('home'));
 
+  // Portrait lock overlay (blackjack only)
   function updateRotateOverlay() {
-    const show = gameType === 'blackjack' && isPortrait();
-    rotateOverlay.classList.toggle('game-rotate-visible', show);
+    rotateOverlay.classList.toggle('game-rotate-visible', gameType === 'blackjack' && isPortrait());
   }
   updateRotateOverlay();
   const onResize = () => updateRotateOverlay();
@@ -84,7 +95,7 @@ export function renderGame(container, socket, state, navigate) {
   let isSittingOut = false;
   let isReady = false;
 
-  // Load renderer by explicit gameType (from enhanced state)
+  // Load renderer
   if (gameType) {
     loadRenderer(gameType).then(mod => {
       renderer = mod;
@@ -100,13 +111,11 @@ export function renderGame(container, socket, state, navigate) {
   chat = new ChatComponent(chatMount, socket, 'game', session?.id);
 
   // Chat toggle
-  const chatPanel = container.querySelector('#chat-panel');
   container.querySelector('#btn-toggle-chat').addEventListener('click', () => {
-    const hidden = chatPanel.style.display === 'none';
-    chatPanel.style.display = hidden ? 'block' : 'none';
+    chatPanel.style.display = chatPanel.style.display === 'none' ? 'block' : 'none';
   });
 
-  // Intermission controls
+  // Intermission — Ready
   btnReady.addEventListener('click', () => {
     if (isReady) return;
     isReady = true;
@@ -115,6 +124,7 @@ export function renderGame(container, socket, state, navigate) {
     socket.emit('game:ready', { sessionId: session?.id });
   });
 
+  // Intermission — Sit Out / Sit In
   btnSitOut.addEventListener('click', () => {
     isSittingOut = !isSittingOut;
     btnSitOut.textContent = isSittingOut ? 'Sit In' : 'Sit Out';
@@ -129,7 +139,7 @@ export function renderGame(container, socket, state, navigate) {
 
     if (isIntermission) {
       const readyPlayers = gs.readyPlayers || [];
-      const sittingOut = gs.sittingOut || [];
+      const sittingOut   = gs.sittingOut   || [];
       const total = (gs.players || []).filter(p => !p.is_bot && !sittingOut.includes(p.id)).length;
       const readyCount = readyPlayers.filter(id => {
         const p = (gs.players || []).find(pl => pl.id === id);
@@ -137,7 +147,6 @@ export function renderGame(container, socket, state, navigate) {
       }).length;
       intermissionStatus.textContent = `${readyCount} / ${total} ready`;
 
-      // Reset ready button if we went back to playing then intermission again
       if (!readyPlayers.includes(state.myPlayerId)) {
         isReady = false;
         btnReady.textContent = 'Ready';
@@ -164,8 +173,8 @@ export function renderGame(container, socket, state, navigate) {
       }
     },
     onEvent(event) { renderer?.onEvent?.(event); },
-    onChat(msg) { chat?.append(msg); },
-    onReconnect() { document.getElementById('announcement-bar').style.display = 'none'; },
+    onChat(msg)    { chat?.append(msg); },
+    onReconnect()  { document.getElementById('announcement-bar').style.display = 'none'; },
     onError(code, message) {
       const bar = document.getElementById('announcement-bar');
       bar.textContent = `Error: ${message}`;
