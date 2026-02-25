@@ -142,16 +142,33 @@ function renderCard(scene, rank, suit, x, y, faceDown = false) {
 // SCENE CREATION
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function render(container, gameState, socket, myPlayerId, hostPlayerId) {
+export function render(containerElement, gameState, socket, myPlayerId, hostPlayerId) {
   lastGameState = { ...gameState };
+
+  // Apply container CSS styling
+  if (typeof containerElement === 'string') {
+    containerElement = document.getElementById(containerElement);
+  }
+  containerElement.style.width = '100%';
+  containerElement.style.height = 'calc(100vh - 60px)';
+  containerElement.style.display = 'block';
+  containerElement.style.position = 'relative';
+  containerElement.style.overflow = 'hidden';
+
+  // Get container dimensions for initial Phaser config
+  const containerWidth = containerElement.clientWidth;
+  const containerHeight = containerElement.clientHeight;
 
   const phaserConfig = {
     type: Phaser.AUTO,
-    parent: container,
-    width: 1280,
-    height: 720,
+    parent: containerElement,
+    width: containerWidth,
+    height: containerHeight,
     backgroundColor: '#0a0a0a',
-    scale: { mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.CENTER_BOTH },
+    scale: {
+      mode: Phaser.Scale.RESIZE,
+      autoCenter: Phaser.Scale.CENTER_BOTH
+    },
     scene: {
       create() {
         phaserScene = this;
@@ -172,6 +189,11 @@ export function render(container, gameState, socket, myPlayerId, hostPlayerId) {
 
         muteBtn.on('pointerover', () => muteBtn.setTint(0xffee00));
         muteBtn.on('pointerout', () => muteBtn.clearTint());
+
+        // Resize handler
+        this.scale.on('resize', (gameSize) => {
+          repositionAll(gameSize.width, gameSize.height);
+        });
       },
       update() {}
     }
@@ -179,24 +201,20 @@ export function render(container, gameState, socket, myPlayerId, hostPlayerId) {
 
   phaserGame = new Phaser.Game(phaserConfig);
 
-  // Resize observer
-  if (resizeObserver) resizeObserver.disconnect();
-  resizeObserver = new ResizeObserver(() => {
-    if (phaserGame && phaserScene) {
-      phaserScene.children.removeAll();
-      drawTableFelt(phaserScene);
-      renderGameState(phaserScene, lastGameState, myPlayerId);
-    }
-  });
-  resizeObserver.observe(container);
+  function repositionAll(w, h) {
+    if (!phaserScene) return;
+    phaserScene.children.removeAll();
+    drawTableFelt(phaserScene);
+    renderGameState(phaserScene, lastGameState, myPlayerId);
+  }
 
   function drawTableFelt(scene) {
     const w = scene.scale.width;
     const h = scene.scale.height;
     const tableX = w * 0.5;
-    const tableY = h * 0.48;
-    const tableW = w * 0.85;
-    const tableH = h * 0.65;
+    const tableY = h * 0.5;
+    const tableW = w * 0.82;
+    const tableH = h * 0.72;
 
     // Black background
     scene.add.rectangle(w / 2, h / 2, w, h, 0x000000).setDepth(-10);
@@ -437,17 +455,18 @@ export function render(container, gameState, socket, myPlayerId, hostPlayerId) {
 
   function calculateSeatPositions(playerCount, w, h) {
     const seats = [];
-    const tableBottomY = h * 0.70;
     const centerX = w * 0.5;
-    const radius = Math.min(w, h) * 0.26;
+    const centerY = h * 0.5;
+    const rx = w * 0.35;
+    const ry = h * 0.28;
 
-    const angleStart = -Math.PI / 2.2;
-    const angleEnd = Math.PI / 2.2;
+    const angleStart = Math.PI * 0.65;
+    const angleEnd = Math.PI * 0.35;
 
     for (let i = 0; i < playerCount; i++) {
       const angle = angleStart + (angleEnd - angleStart) * (i / Math.max(1, playerCount - 1));
-      const px = centerX + radius * Math.cos(angle);
-      const py = tableBottomY + radius * Math.sin(angle);
+      const px = centerX + rx * Math.cos(angle);
+      const py = centerY + ry * Math.sin(angle);
       seats.push({ x: px, y: py });
     }
 
