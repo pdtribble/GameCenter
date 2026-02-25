@@ -4,6 +4,8 @@ import { renderLobby } from './views/lobby.js';
 import { renderGame } from './views/game.js';
 import { renderProfile } from './views/profile.js';
 import { renderPostgame } from './views/postgame.js';
+import { renderSingleplayer } from './views/singleplayer.js';
+import { renderMinesweeper } from './views/minesweeper.js';
 
 // ── Scale layout system ───────────────────────────────────────────────────────
 const LANDSCAPE_W = 1280, LANDSCAPE_H = 720;
@@ -58,15 +60,17 @@ function navigate(view, data = {}) {
   app.innerHTML = '';
 
   navbar.style.display = view === 'home' ? 'none' : 'flex';
-  document.body.classList.toggle('gc-view', view === 'profile' || view === 'lobby');
+  document.body.classList.toggle('gc-view', view === 'profile' || view === 'lobby' || view === 'singleplayer');
 
   switch (view) {
-    case 'home':     currentView = renderHome(app, socket, state, navigate); break;
-    case 'lobby':    currentView = renderLobby(app, socket, state, navigate); break;
-    case 'game':     currentView = renderGame(app, socket, state, navigate); break;
-    case 'profile':  currentView = renderProfile(app, socket, state, navigate); break;
-    case 'postgame': currentView = renderPostgame(app, socket, state, navigate, data); break;
-    default:         app.innerHTML = '<p style="padding:2rem">Unknown view.</p>';
+    case 'home':         currentView = renderHome(app, socket, state, navigate); break;
+    case 'lobby':        currentView = renderLobby(app, socket, state, navigate); break;
+    case 'game':         currentView = renderGame(app, socket, state, navigate); break;
+    case 'profile':      currentView = renderProfile(app, socket, state, navigate); break;
+    case 'postgame':     currentView = renderPostgame(app, socket, state, navigate, data); break;
+    case 'singleplayer': currentView = renderSingleplayer(app, socket, state, navigate); break;
+    case 'minesweeper':  currentView = renderMinesweeper(app, socket, state, navigate, data); break;
+    default:             app.innerHTML = '<p style="padding:2rem">Unknown view.</p>';
   }
 }
 
@@ -198,6 +202,7 @@ function applyTheme(theme) {
 // ── Nav buttons ───────────────────────────────────────────────────────────────
 document.getElementById('nav-home').addEventListener('click', () => navigate('home'));
 document.getElementById('nav-profile').addEventListener('click', () => navigate('profile'));
+document.getElementById('nav-solo').addEventListener('click', () => navigate('singleplayer'));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function showSystemMessage(msg) {

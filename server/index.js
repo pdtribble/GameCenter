@@ -15,6 +15,7 @@ const syncRunner = require('./sync');
 const statusRouter = require('./routes/status');
 const adminRouter = require('./routes/admin');
 const joinRouter = require('./routes/join');
+const spRouter = require('./routes/singleplayer');
 const rateLimitMiddleware = require('./middleware/rate-limit');
 const authMiddleware = require('./middleware/auth');
 
@@ -46,6 +47,7 @@ app.use(express.static(path.join(__dirname, '..', 'client')));
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use('/', statusRouter);
+app.use('/', spRouter);
 app.use('/join', joinRouter);
 app.use('/admin', rateLimitMiddleware.adminLimiter, adminRouter);
 
