@@ -1,253 +1,350 @@
-// Blackjack renderer — image-accurate D-shape felt table (SVG) + live HTML overlay
-// Dealer zone top, 7 seats along arc, rail/gold line bottom. Perspective tilt.
-// Phone: 3 seats (left neighbor, local, right neighbor); others as avatar chips.
+// Blackjack renderer — Phaser 3 canvas-based
+// Supports 1-6 players, responsive scaling, procedural audio
 
-const VIEW_W = 900;
-const VIEW_H = 520;
+let phaserGame = null;
+let phaserScene = null;
+let lastGameState = null;
 
-let _container = null;
-let _socket = null;
-let _playerId = null;
-let _state = null;
+// ── Audio helpers ──────────────────────────────────────────────────────────
+const isMuted = () => localStorage.getItem('gc_mute') === 'true';
 
-export function render(container, state, socket, playerId, hostPlayerId) {
-  _container = container;
-  _socket = socket;
-  _playerId = playerId;
-  _state = state;
-  draw(state);
+function playTone(freq, duration, type = 'sine') {
+  if (isMuted()) return;
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type = type;
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration / 1000);
+    osc.start(audioCtx.currentTime);
+    osc.stop(audioCtx.currentTime + duration / 1000);
+  } catch (e) {}
 }
 
-export function update(state, playerId, hostPlayerId) {
-  _state = state;
-  if (playerId) _playerId = playerId;
-  draw(state);
+function playCardDeal() { playTone(800, 80, 'sine'); }
+function playChipPlace() { playTone(500, 80, 'sine'); }
+function playWin() {
+  playTone(523, 100);
+  setTimeout(() => playTone(659, 100), 110);
+}
+function playLose() {
+  playTone(330, 100);
+  setTimeout(() => playTone(262, 100), 110);
+}
+function playBlackjack() {
+  playTone(523, 100);
+  setTimeout(() => playTone(659, 100), 110);
+  setTimeout(() => playTone(784, 100), 220);
+}
+
+// ── Card graphics ──────────────────────────────────────────────────────────
+function drawCard(scene, rank, suit, x, y, faceDown = false) {
+  const cardW = 55, cardH = 85;
+
+  if (faceDown) {
+    const graphics = scene.add.graphics();
+    graphics.fillStyle(0x001a66);
+    graphics.fillRoundedRect(x - cardW / 2, y - cardH / 2, cardW, cardH, 4);
+    graphics.lineStyle(2, 0x003d99);
+    graphics.strokeRoundedRect(x - cardW / 2, y - cardH / 2, cardW, cardH, 4);
+    graphics.fillStyle(0x003d99);
+    for (let i = 0; i < 3; i++) {
+      for (let j = 0; j < 3; j++) {
+        const px = x - cardW / 2 + 12 + i * 15;
+        const py = y - cardH / 2 + 15 + j * 20;
+        graphics.fillRect(px - 4, py - 4, 8, 8);
+      }
+    }
+    return graphics;
+  }
+
+  // Face card
+  const graphics = scene.add.graphics();
+  graphics.fillStyle(0xffffff);
+  graphics.fillRoundedRect(x - cardW / 2, y - cardH / 2, cardW, cardH, 4);
+  graphics.lineStyle(2, 0x000000);
+  graphics.strokeRoundedRect(x - cardW / 2, y - cardH / 2, cardW, cardH, 4);
+
+  const isRed = suit === '♥' || suit === '♦';
+  const color = isRed ? '#ff0000' : '#000000';
+
+  scene.add.text(x - cardW / 2 + 3, y - cardH / 2 + 2, rank, {
+    font: '11px Arial', fill: color, fontStyle: 'bold'
+  }).setOrigin(0);
+
+  scene.add.text(x + cardW / 2 - 5, y + cardH / 2 - 13, suit, {
+    font: '12px Arial', fill: color, fontStyle: 'bold'
+  }).setOrigin(0);
+
+  return graphics;
+}
+
+// ── Player seat positioning ────────────────────────────────────────────────
+function calculateSeatPositions(playerCount, sceneWidth, sceneHeight) {
+  const seats = [];
+  const tableBottomY = sceneHeight * 0.70;
+  const centerX = sceneWidth / 2;
+  const radius = Math.min(sceneWidth, sceneHeight) * 0.25;
+
+  const angleStart = -Math.PI / 2.5;
+  const angleEnd = Math.PI / 2.5;
+
+  for (let i = 0; i < playerCount; i++) {
+    const angle = angleStart + (angleEnd - angleStart) * (i / Math.max(1, playerCount - 1));
+    const px = centerX + radius * Math.cos(angle);
+    const py = tableBottomY + radius * Math.sin(angle);
+    const isLocalCenter = i === Math.floor(playerCount / 2);
+    seats.push({ x: px, y: py, isLocalCenter, index: i });
+  }
+
+  return seats;
+}
+
+export function render(container, gameState, socket, myPlayerId, hostPlayerId) {
+  lastGameState = { ...gameState };
+
+  const phaserConfig = {
+    type: Phaser.AUTO,
+    parent: container,
+    width: 1280,
+    height: 720,
+    backgroundColor: '#000000',
+    scale: {
+      mode: Phaser.Scale.RESIZE,
+      autoCenter: Phaser.Scale.CENTER_BOTH
+    },
+    scene: {
+      create() {
+        phaserScene = this;
+        drawTable();
+        renderGameState(gameState, myPlayerId);
+      },
+      update() {}
+    }
+  };
+
+  phaserGame = new Phaser.Game(phaserConfig);
+
+  function drawTable() {
+    const scene = phaserScene;
+    const w = scene.scale.width;
+    const h = scene.scale.height;
+
+    // Black background
+    scene.add.rectangle(w / 2, h / 2, w, h, 0x000000).setDepth(-10);
+
+    // Felt oval
+    const tableW = w * 0.80;
+    const tableH = h * 0.60;
+    const tableX = w / 2;
+    const tableY = h * 0.48;
+
+    const graphics = scene.add.graphics();
+    graphics.fillStyle(0x1a5c3a);
+    graphics.fillEllipse(tableX, tableY, tableW, tableH);
+    graphics.lineStyle(10, 0x6b4423);
+    graphics.strokeEllipse(tableX, tableY, tableW, tableH);
+    graphics.setDepth(-1);
+
+    // Dealer zone
+    scene.add.text(tableX, h * 0.12, 'DEALER', {
+      font: 'bold 18px Arial',
+      fill: '#ffffff'
+    }).setOrigin(0.5);
+  }
+
+  function renderGameState(state, myPlayerId) {
+    if (!phaserScene) return;
+
+    phaserScene.children.removeAll();
+    drawTable();
+
+    const players = state.players || [];
+    if (players.length === 0) return;
+
+    const seats = calculateSeatPositions(players.length, phaserScene.scale.width, phaserScene.scale.height);
+
+    // Reorder: local player to center seat
+    let orderedPlayers = [...players];
+    const myIndex = players.findIndex(p => p.id === myPlayerId);
+    const centerIndex = Math.floor(players.length / 2);
+
+    if (myIndex !== -1 && myIndex !== centerIndex) {
+      [orderedPlayers[myIndex], orderedPlayers[centerIndex]] = [orderedPlayers[centerIndex], orderedPlayers[myIndex]];
+    }
+
+    orderedPlayers.forEach((player, idx) => {
+      if (idx >= seats.length) return;
+      const seat = seats[idx];
+      const isLocalPlayer = player.id === myPlayerId;
+      renderPlayerSeat(phaserScene, player, seat, isLocalPlayer, state);
+    });
+  }
+
+  function renderPlayerSeat(scene, player, seat, isLocalPlayer, state) {
+    const hand = player.hand || [];
+
+    // Player name
+    const nameColor = isLocalPlayer ? '#ffff00' : '#ffffff';
+    scene.add.text(seat.x, seat.y - 65, player.display_name || 'Player', {
+      font: 'bold 14px Arial',
+      fill: nameColor
+    }).setOrigin(0.5);
+
+    // Cards
+    const cardStartX = seat.x - (hand.length - 1) * 13;
+    hand.forEach((card, i) => {
+      const cardX = cardStartX + i * 26;
+      drawCard(scene, card.rank, card.suit, cardX, seat.y, card.hidden);
+      playCardDeal();
+    });
+
+    // Hand total
+    if (hand.length > 0 && player.handTotal !== undefined) {
+      scene.add.text(seat.x, seat.y + 50, String(player.handTotal), {
+        font: 'bold 14px Arial',
+        fill: '#00ff00'
+      }).setOrigin(0.5);
+    }
+
+    // Chip count
+    scene.add.text(seat.x, seat.y + 68, `💰 ${player.chips || 0}`, {
+      font: '11px Arial',
+      fill: '#ffffff'
+    }).setOrigin(0.5);
+
+    // Local player indicator
+    if (isLocalPlayer) {
+      const ring = scene.add.graphics();
+      ring.lineStyle(3, 0xffff00);
+      ring.strokeEllipse(seat.x, seat.y, 90, 70);
+    }
+
+    // Result overlay
+    if (player.result) {
+      let color = '#ffffff';
+      let text = 'UNKNOWN';
+      if (player.result === 'win') { color = '#00ff00'; text = 'WIN'; playWin(); }
+      if (player.result === 'lose') { color = '#ff0000'; text = 'LOSE'; playLose(); }
+      if (player.result === 'push') { color = '#ffff00'; text = 'PUSH'; }
+      if (player.result === 'bust') { color = '#ff0000'; text = 'BUST'; playLose(); }
+      if (player.result === 'blackjack') { color = '#ffd700'; text = 'BJ'; playBlackjack(); }
+
+      scene.add.text(seat.x, seat.y - 10, text, {
+        font: 'bold 20px Arial',
+        fill: color,
+        backgroundColor: '#000000',
+        padding: { x: 8, y: 4 }
+      }).setOrigin(0.5);
+    }
+  }
+}
+
+export function update(gameState, playerId) {
+  if (!phaserScene || !phaserGame) return;
+
+  // Reconstruct from fresh state (handles reconnect)
+  const players = gameState.players || [];
+  phaserScene.children.removeAll();
+
+  const w = phaserGame.scale.width;
+  const h = phaserGame.scale.height;
+
+  // Redraw table
+  phaserScene.add.rectangle(w / 2, h / 2, w, h, 0x000000).setDepth(-10);
+
+  const tableW = w * 0.80;
+  const tableH = h * 0.60;
+  const tableX = w / 2;
+  const tableY = h * 0.48;
+
+  const graphics = phaserScene.add.graphics();
+  graphics.fillStyle(0x1a5c3a);
+  graphics.fillEllipse(tableX, tableY, tableW, tableH);
+  graphics.lineStyle(10, 0x6b4423);
+  graphics.strokeEllipse(tableX, tableY, tableW, tableH);
+  graphics.setDepth(-1);
+
+  phaserScene.add.text(tableX, h * 0.12, 'DEALER', {
+    font: 'bold 18px Arial',
+    fill: '#ffffff'
+  }).setOrigin(0.5);
+
+  // Render seats
+  const seats = calculateSeatPositions(players.length, w, h);
+
+  let orderedPlayers = [...players];
+  const myIndex = players.findIndex(p => p.id === playerId);
+  const centerIndex = Math.floor(players.length / 2);
+
+  if (myIndex !== -1 && myIndex !== centerIndex) {
+    [orderedPlayers[myIndex], orderedPlayers[centerIndex]] = [orderedPlayers[centerIndex], orderedPlayers[myIndex]];
+  }
+
+  orderedPlayers.forEach((player, idx) => {
+    if (idx >= seats.length) return;
+    const seat = seats[idx];
+    const isLocalPlayer = player.id === playerId;
+    const hand = player.hand || [];
+
+    phaserScene.add.text(seat.x, seat.y - 65, player.display_name || 'Player', {
+      font: 'bold 14px Arial',
+      fill: isLocalPlayer ? '#ffff00' : '#ffffff'
+    }).setOrigin(0.5);
+
+    const cardStartX = seat.x - (hand.length - 1) * 13;
+    hand.forEach((card, i) => {
+      const cardX = cardStartX + i * 26;
+      drawCard(phaserScene, card.rank, card.suit, cardX, seat.y, card.hidden);
+    });
+
+    if (hand.length > 0 && player.handTotal !== undefined) {
+      phaserScene.add.text(seat.x, seat.y + 50, String(player.handTotal), {
+        font: 'bold 14px Arial',
+        fill: '#00ff00'
+      }).setOrigin(0.5);
+    }
+
+    phaserScene.add.text(seat.x, seat.y + 68, `💰 ${player.chips || 0}`, {
+      font: '11px Arial',
+      fill: '#ffffff'
+    }).setOrigin(0.5);
+
+    if (isLocalPlayer) {
+      const ring = phaserScene.add.graphics();
+      ring.lineStyle(3, 0xffff00);
+      ring.strokeEllipse(seat.x, seat.y, 90, 70);
+    }
+
+    if (player.result) {
+      let color = '#ffffff';
+      let text = 'UNKNOWN';
+      if (player.result === 'win') { color = '#00ff00'; text = 'WIN'; }
+      if (player.result === 'lose') { color = '#ff0000'; text = 'LOSE'; }
+      if (player.result === 'push') { color = '#ffff00'; text = 'PUSH'; }
+      if (player.result === 'bust') { color = '#ff0000'; text = 'BUST'; }
+      if (player.result === 'blackjack') { color = '#ffd700'; text = 'BJ'; }
+
+      phaserScene.add.text(seat.x, seat.y - 10, text, {
+        font: 'bold 20px Arial',
+        fill: color,
+        backgroundColor: '#000000',
+        padding: { x: 8, y: 4 }
+      }).setOrigin(0.5);
+    }
+  });
+
+  lastGameState = { ...gameState };
 }
 
 export function destroy() {
-  _container = null;
-}
-
-// ── Arc math (quadratic bezier: P0=(0,H/2), P1=(W/2,H), P2=(W,H/2)) ─────────
-function arcPoint(t, w = VIEW_W, h = VIEW_H) {
-  const p0 = { x: 0, y: h * 0.5 };
-  const p1 = { x: w * 0.5, y: h };
-  const p2 = { x: w, y: h * 0.5 };
-  return {
-    x: (1 - t) * (1 - t) * p0.x + 2 * (1 - t) * t * p1.x + t * t * p2.x,
-    y: (1 - t) * (1 - t) * p0.y + 2 * (1 - t) * t * p1.y + t * t * p2.y,
-  };
-}
-
-const SEAT_T_VALUES = [0.15, 0.25, 0.35, 0.5, 0.65, 0.75, 0.85];
-
-function getSeatPositions() {
-  return SEAT_T_VALUES.map(t => {
-    const circle = arcPoint(t);
-    const cardW = 62, cardH = 88, circleR = 22, gap = 10;
-    const cardCenterY = circle.y - circleR - gap - cardH / 2;
-    return {
-      circle: { cx: circle.x, cy: circle.y, r: circleR },
-      card: { x: circle.x - cardW / 2, y: cardCenterY - cardH / 2, w: cardW, h: cardH },
-      centerX: circle.x,
-      centerY: circle.y,
-    };
-  });
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
-function handValue(cards) {
-  if (!cards || cards.length === 0) return 0;
-  let sum = 0, aces = 0;
-  for (const c of cards) {
-    if (c.rank === 'A') aces++;
-    else if (c.rank === 'J' || c.rank === 'Q' || c.rank === 'K') sum += 10;
-    else sum += parseInt(c.rank, 10) || 0;
+  if (phaserGame) {
+    phaserGame.destroy(true);
+    phaserGame = null;
+    phaserScene = null;
   }
-  for (let i = 0; i < aces; i++) {
-    if (sum + 11 + (aces - 1 - i) <= 21) sum += 11;
-    else sum += 1;
-  }
-  return sum;
-}
-
-function isRedSuit(suit) {
-  return suit === '\u2665' || suit === '\u2666';
-}
-
-function renderCardEl(card, faceDown = false, index = 0) {
-  const offset = `translate(${index * 38}%, ${index * 1.3}%)`;
-  if (faceDown || (card && card.hole)) {
-    return `<div class="bj-card bj-card-face-down" style="transform: ${offset}">🂠</div>`;
-  }
-  if (!card || !card.rank) return '';
-  const red = isRedSuit(card.suit);
-  return `<div class="bj-card${red ? ' bj-card-red' : ''}" style="transform: ${offset}">
-    <span class="card-rank">${escHtml(card.rank)}</span><span class="card-suit">${escHtml(card.suit)}</span>
-  </div>`;
-}
-
-function escHtml(str) {
-  return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-// ── Build static SVG table ────────────────────────────────────────────────────
-function buildTableSVG(seatPositions) {
-  const seatsPath = seatPositions.map((s, i) => {
-    const { card, circle } = s;
-    return `
-      <rect x="${card.x}" y="${card.y}" width="${card.w}" height="${card.h}" fill="none" stroke="#c8a96e" stroke-width="1.5" rx="4" opacity="0.5"/>
-      <circle cx="${circle.cx}" cy="${circle.cy}" r="${circle.r}" fill="none" stroke="#c8a96e" stroke-width="1" opacity="0.4"/>`;
-  }).join('');
-
-  // D-shape: straight top, arc bottom rising ~15% at center (y=182)
-  const arcCtrlY = 182;
-  const railPath = `M 0,260 Q 450,${arcCtrlY} ${VIEW_W},260`;
-  const clipPathD = `M 0,0 H ${VIEW_W} V 260 Q 450,${arcCtrlY} 0,260 Z`;
-
-  return `
-<svg class="bj-felt-svg" viewBox="0 0 ${VIEW_W} ${VIEW_H}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
-  <defs>
-    <clipPath id="bj-table-clip">
-      <path d="${clipPathD}"/>
-    </clipPath>
-    <radialGradient id="bj-felt-grad" cx="50%" cy="50%" r="70%">
-      <stop offset="0%" stop-color="#236b30"/>
-      <stop offset="100%" stop-color="#122118"/>
-    </radialGradient>
-    <pattern id="bj-texture" width="4" height="4" patternUnits="userSpaceOnUse">
-      <rect width="4" height="4" fill="#1e5c2a"/>
-      <path d="M 0 0 L 4 4 M 4 0 L 0 4" stroke="rgba(255,255,255,0.015)" stroke-width="1"/>
-    </pattern>
-  </defs>
-  <rect width="${VIEW_W}" height="${VIEW_H}" fill="#1e5c2a" clip-path="url(#bj-table-clip)"/>
-  <rect width="${VIEW_W}" height="${VIEW_H}" fill="url(#bj-felt-grad)" clip-path="url(#bj-table-clip)"/>
-  <rect width="${VIEW_W}" height="${VIEW_H}" fill="url(#bj-texture)" opacity="0.04" clip-path="url(#bj-table-clip)"/>
-  <path d="${railPath}" fill="none" stroke="#2e1505" stroke-width="24" stroke-linecap="round"/>
-  <path d="M 4,258 Q 454,${arcCtrlY - 2} ${VIEW_W - 4},258" fill="none" stroke="#7a4520" stroke-width="2"/>
-  <path d="M 8,256 Q 450,${arcCtrlY - 4} ${VIEW_W - 8},256" fill="none" stroke="#c8a96e" stroke-width="2" opacity="0.6"/>
-  <rect x="370" y="20" width="160" height="90" fill="none" stroke="#c8a96e" stroke-width="2" rx="6" opacity="0.55"/>
-  <text x="450" y="14" text-anchor="middle" font-family="DM Mono, monospace" font-size="9.6" fill="#c8a96e" opacity="0.4">DEALER</text>
-  <path id="bj-insurance-arc" d="M 80,320 Q 450,420 820,320" fill="none" stroke="#c8a96e" stroke-width="1.5" opacity="0.45"/>
-  <path id="bj-text-arc-up" d="M 120,140 Q 450,60 780,140"/>
-  <path id="bj-text-arc-down" d="M 100,240 Q 450,300 800,240"/>
-  <text fill="#e8b84b" font-size="22" font-weight="bold" opacity="0.75">
-    <textPath xlink:href="#bj-text-arc-up" startOffset="50%" text-anchor="middle">BLACK JACK PAYS 3 TO 2</textPath>
-  </text>
-  <text fill="#c8b89a" font-size="10" opacity="0.5">
-    <textPath xlink:href="#bj-text-arc-down" startOffset="50%" text-anchor="middle">Dealer must draw to 16 and stand on all 17s</textPath>
-  </text>
-  <text x="450" y="318" text-anchor="middle" font-size="25" font-weight="bold" fill="#e8b84b" opacity="0.8">INSURANCE</text>
-  <text x="180" y="300" transform="rotate(28, 180, 300)" font-family="DM Mono, monospace" font-size="9.6" fill="#c8a96e" opacity="0.55">PAYS 2 TO 1</text>
-  <text x="720" y="300" transform="rotate(-28, 720, 300)" font-family="DM Mono, monospace" font-size="9.6" fill="#c8a96e" opacity="0.55">PAYS 2 TO 1</text>
-  ${seatsPath}
-</svg>`;
-}
-
-// ── Main draw ────────────────────────────────────────────────────────────────
-function draw(state) {
-  if (!_container || !state) return;
-
-  const { round, phase, dealerHand, players, currentPlayerId, enginePhase } = state;
-  const myId = _playerId;
-  const isIntermission = enginePhase === 'intermission';
-  const isPhone = document.body.classList.contains('layout-phone');
-  const myPlayer = (players || []).find(p => p.id === myId);
-  const canAct = !isIntermission && phase === 'playing' && currentPlayerId === myId && myPlayer && myPlayer.status === 'playing';
-  const seatPositions = getSeatPositions();
-  const numSeats = isPhone ? 3 : 7;
-  const playerList = players || [];
-  const myIndex = playerList.findIndex(p => p.id === myId);
-
-  const dealerTotal = dealerHand && dealerHand.length && !dealerHand[0].hole
-    ? handValue(dealerHand)
-    : (dealerHand && dealerHand[1] ? handValue([dealerHand[1]]) : '?');
-  const dealerBust = typeof dealerTotal === 'number' && dealerTotal > 21;
-
-  // Dealer cards HTML (positioned over dealer zone: ~370,20 160×90 → %)
-  const dealerCardsHtml = (dealerHand || []).map((c, i) => renderCardEl(c, false, i)).join('');
-
-  // Player seats: map players to seats (center local player on phone)
-  const seatAssignments = [];
-  if (isPhone && playerList.length > 0) {
-    const start = Math.max(0, myIndex - 1);
-    for (let i = 0; i < 3; i++) {
-      seatAssignments[i] = playerList[start + i] || null;
-    }
-  } else {
-    for (let i = 0; i < 7; i++) {
-      seatAssignments[i] = playerList[i] || null;
-    }
-  }
-
-  const seatsHtml = seatAssignments.slice(0, numSeats).map((p, idx) => {
-    const pos = seatPositions[idx];
-    if (!pos) return '';
-    const pctX = (pos.centerX / VIEW_W * 100).toFixed(2);
-    const pctY = (pos.centerY / VIEW_H * 100).toFixed(2);
-    if (!p) {
-      return `<div class="bj-seat bj-seat-empty" style="left:${pctX}%;top:${pctY}%;transform:translate(-50%,-50%)"></div>`;
-    }
-    const isMe = p.id === myId;
-    const total = handValue(p.hand);
-    const bust = total > 21;
-    const result = p.result;
-    const isWinner = result === 'win' || result === 'blackjack';
-    const statusText = p.status === 'bust' ? 'Bust' : p.status === 'blackjack' ? 'BJ' : p.status === 'stood' ? String(total) : (currentPlayerId === p.id ? '…' : '');
-    const cardsHtml = (p.hand || []).map((c, i) => renderCardEl(c, false, i)).join('');
-    const seatClasses = ['bj-seat', isMe ? 'bj-seat-me' : '', phase === 'results' && isWinner ? 'bj-seat-winner' : '', phase === 'results' && result === 'lose' ? 'bj-seat-loser' : '', bust ? 'bj-seat-bust' : ''].filter(Boolean).join(' ');
-    return `
-      <div class="${seatClasses}" style="left:${pctX}%;top:${pctY}%;transform:translate(-50%,-50%)">
-        <div class="bj-seat-card-zone">
-          <div class="bj-card-fan">${cardsHtml}</div>
-          ${total > 0 ? `<div class="bj-hand-total">${total}</div>` : ''}
-        </div>
-        <div class="bj-seat-name">${escHtml(p.displayName || p.id)}${p.is_bot ? ' 🤖' : ''}${isMe ? ' (you)' : ''}</div>
-        <div class="bj-seat-meta">${p.chips ?? 0} · Bet ${p.bet ?? 0}</div>
-        ${statusText ? `<div class="bj-seat-status">${escHtml(statusText)}</div>` : ''}
-      </div>`;
-  }).filter(Boolean).join('');
-
-  // Phone: other players (not in the 3 visible seats) as small avatars along rail
-  const startVisible = Math.max(0, myIndex - 1);
-  const otherPlayersHtml = isPhone && playerList.length > 3
-    ? playerList.filter((_, i) => i < startVisible || i > startVisible + 2).map(p =>
-        `<div class="bj-rail-avatar" title="${escHtml(p.displayName || p.id)}">${escHtml((p.avatar_emoji || '👤').slice(0, 1))}<span>${p.chips ?? 0}</span></div>`
-      ).join('')
-    : '';
-
-  const actionBar = canAct ? `
-    <div class="bj-action-bar">
-      ${(myPlayer.hand.length === 2 && myPlayer.chips >= myPlayer.bet) ? '<button class="btn btn-secondary bj-btn" id="bj-double">Double</button>' : ''}
-      <button class="btn btn-secondary bj-btn" id="bj-hit">Hit</button>
-      <button class="btn btn-primary bj-btn" id="bj-stand">Stand</button>
-    </div>` : '';
-
-  const tableSVG = buildTableSVG(seatPositions);
-
-  _container.innerHTML = `
-    <div class="bj-scene${isIntermission ? ' bj-dimmed' : ''}">
-      <div class="bj-round-label">Round ${round}</div>
-      <div class="bj-table-wrap">
-        <div class="bj-table">
-          ${tableSVG}
-          <div class="bj-live">
-            <div class="bj-dealer-zone">
-              <div class="bj-dealer-label${dealerBust ? ' bj-bust' : ''}">Dealer${phase === 'results' ? ` · ${dealerTotal}` : ''}${dealerBust ? ' (Bust)' : ''}</div>
-              <div class="bj-dealer-cards"><div class="bj-card-fan">${dealerCardsHtml}</div></div>
-            </div>
-            <div class="bj-seats">${seatsHtml}</div>
-            ${otherPlayersHtml ? `<div class="bj-rail-avatars">${otherPlayersHtml}</div>` : ''}
-            ${actionBar}
-          </div>
-        </div>
-      </div>
-    </div>`;
-
-  const emit = (type) => {
-    _socket.emit('game:action', { sessionId: _socket.currentSessionId, action: { type } });
-  };
-  _container.querySelector('#bj-hit')?.addEventListener('click', () => emit('hit'));
-  _container.querySelector('#bj-stand')?.addEventListener('click', () => emit('stand'));
-  _container.querySelector('#bj-double')?.addEventListener('click', () => emit('double'));
 }
