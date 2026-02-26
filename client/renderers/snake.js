@@ -153,20 +153,19 @@ function injectStyles() {
   st.id = 'sk-styles';
   st.textContent = `
     #sk-root {
-      --sk-bg: #050a05;
-      --sk-surface: #091209;
-      --sk-green: #39ff14;
-      --sk-green-dim: rgba(57,255,20,0.18);
-      --sk-green-mid: rgba(57,255,20,0.45);
-      --sk-green-head: #39ff14;
-      --sk-green-body: #1a8f00;
-      --sk-green-tail: #0f5500;
-      --sk-food: #ff2222;
-      --sk-border: rgba(57,255,20,0.12);
+      --sk-bg: #0d1117;
+      --sk-surface: #161b22;
+      --sk-accent: #58a6ff;
+      --sk-green: #3fb950;
+      --sk-green-head: #56d364;
+      --sk-green-body: #238636;
+      --sk-green-tail: #196c2e;
+      --sk-food: #f85149;
+      --sk-border: #30363d;
       --sk-font: 'DM Mono','Courier New',monospace;
       --sk-cell: 20px;
       background: var(--sk-bg);
-      color: var(--sk-green);
+      color: #c9d1d9;
       font-family: var(--sk-font);
       display: flex;
       flex-direction: column;
@@ -179,94 +178,108 @@ function injectStyles() {
       display: flex;
       align-items: center;
       gap: 12px;
-      padding: 8px 14px;
+      padding: 10px 16px;
+      background: var(--sk-surface);
       border-bottom: 1px solid var(--sk-border);
       flex-shrink: 0;
     }
     #sk-back {
-      background: none;
+      background: transparent;
       border: 1px solid var(--sk-border);
-      color: var(--sk-green);
+      color: #8b949e;
       font-family: var(--sk-font);
       font-size: 0.72rem;
-      padding: 4px 10px;
+      padding: 6px 12px;
       cursor: pointer;
       letter-spacing: 0.05em;
-      border-radius: 2px;
-      transition: border-color 0.15s, color 0.15s;
+      border-radius: 6px;
+      transition: all 0.15s;
     }
-    #sk-back:hover { border-color: var(--sk-green); color: #fff; }
+    #sk-back:hover { border-color: var(--sk-accent); color: var(--sk-accent); }
     #sk-title {
-      font-size: 0.78rem;
-      letter-spacing: 0.15em;
+      font-size: 0.82rem;
+      font-weight: 600;
+      letter-spacing: 0.12em;
       color: var(--sk-green);
-      opacity: 0.85;
       text-transform: uppercase;
     }
     #sk-mute {
-      background: none;
+      background: transparent;
       border: none;
-      color: var(--sk-green);
+      color: #8b949e;
       font-family: var(--sk-font);
-      font-size: 0.8rem;
+      font-size: 0.85rem;
       cursor: pointer;
-      opacity: 0.6;
-      padding: 4px 8px;
+      padding: 6px 10px;
       margin-left: auto;
+      border-radius: 6px;
+      transition: all 0.15s;
     }
-    #sk-mute:hover { opacity: 1; }
+    #sk-mute:hover { background: var(--sk-border); }
 
     #sk-difficulty-bar {
       display: flex;
-      gap: 6px;
-      padding: 8px 14px;
+      gap: 8px;
+      padding: 10px 16px;
+      background: var(--sk-surface);
       border-bottom: 1px solid var(--sk-border);
       flex-shrink: 0;
     }
     .sk-diff {
-      background: none;
+      background: var(--sk-bg);
       border: 1px solid var(--sk-border);
-      color: var(--sk-green);
+      color: #8b949e;
       font-family: var(--sk-font);
-      font-size: 0.65rem;
-      padding: 4px 10px;
+      font-size: 0.68rem;
+      font-weight: 600;
+      padding: 6px 14px;
       cursor: pointer;
-      letter-spacing: 0.08em;
-      border-radius: 2px;
-      transition: all 0.12s;
+      letter-spacing: 0.06em;
+      border-radius: 20px;
+      transition: all 0.15s, transform 0.1s;
       text-transform: uppercase;
     }
-    .sk-diff:hover { border-color: var(--sk-green); }
+    .sk-diff:hover { border-color: #6e7681; color: #c9d1d9; }
     .sk-diff.active {
-      background: var(--sk-green-dim);
+      background: var(--sk-green);
       border-color: var(--sk-green);
-      font-weight: 700;
+      color: #0d1117;
     }
+    .sk-diff:active { transform: scale(0.95); }
 
     #sk-hud {
       display: flex;
       justify-content: center;
-      gap: 24px;
-      padding: 10px 14px;
+      gap: 16px;
+      padding: 12px 16px;
+      background: var(--sk-surface);
       border-bottom: 1px solid var(--sk-border);
       flex-shrink: 0;
     }
-    #sk-score-box, #sk-highscore-box, #sk-speed-box {
+    .sk-hud-card {
+      background: var(--sk-bg);
+      border: 1px solid var(--sk-border);
+      border-radius: 8px;
+      padding: 8px 16px;
       text-align: center;
+      min-width: 70px;
     }
     .sk-hud-label {
       font-size: 0.55rem;
+      font-weight: 600;
       letter-spacing: 0.1em;
-      opacity: 0.5;
+      color: #484f58;
       text-transform: uppercase;
       margin-bottom: 2px;
     }
     #sk-score, #sk-highscore, #sk-speed {
-      font-size: 1.1rem;
+      font-size: 1.15rem;
       font-weight: 700;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.04em;
+      color: #c9d1d9;
     }
-    #sk-highscore { opacity: 0.7; }
+    #sk-highscore { color: #d29922; }
+    #sk-speed { color: var(--sk-accent); }
 
     #sk-board-wrap {
       flex: 1;
@@ -275,39 +288,71 @@ function injectStyles() {
       justify-content: center;
       overflow: hidden;
       position: relative;
-      padding: 16px;
+      padding: 20px;
+      background: 
+        radial-gradient(ellipse at center, rgba(35,134,54,0.05) 0%, transparent 70%),
+        var(--sk-bg);
     }
     #sk-board {
       display: grid;
-      gap: 1px;
-      background: var(--sk-border);
-      border: 2px solid var(--sk-border);
-      box-shadow: 0 0 30px rgba(57,255,20,0.08);
+      gap: 0;
+      background: #0d1117;
+      border: 3px solid var(--sk-border);
+      border-radius: 12px;
+      box-shadow: 
+        0 8px 32px rgba(0,0,0,0.5),
+        inset 0 0 60px rgba(0,0,0,0.3),
+        inset 0 0 0 1px rgba(255,255,255,0.03);
+      overflow: hidden;
     }
     .sk-cell {
       width: var(--sk-cell);
       height: var(--sk-cell);
-      background: var(--sk-bg);
-      transition: background 0.05s;
+      background: #161b22;
+      transition: background 0.06s;
+      position: relative;
     }
     .sk-cell.snake-head {
       background: var(--sk-green-head);
-      box-shadow: 0 0 8px rgba(57,255,20,0.8);
+      box-shadow: 
+        0 0 12px rgba(86,211,100,0.6),
+        inset 0 -2px 4px rgba(0,0,0,0.2);
     }
+    .sk-cell.snake-head::before,
+    .sk-cell.snake-head::after {
+      content: '';
+      position: absolute;
+      width: 4px;
+      height: 4px;
+      background: #0d1117;
+      border-radius: 50%;
+      top: 35%;
+    }
+    .sk-cell.snake-head::before { left: 25%; }
+    .sk-cell.snake-head::after { right: 25%; }
     .sk-cell.snake-body {
-      background: var(--sk-green-body);
+      background: linear-gradient(180deg, var(--sk-green-head) 0%, var(--sk-green-body) 100%);
     }
     .sk-cell.snake-tail {
       background: var(--sk-green-tail);
     }
     .sk-cell.food {
-      background: var(--sk-food);
-      box-shadow: 0 0 10px rgba(255,34,34,0.6);
-      animation: sk-food-pulse 0.8s ease-in-out infinite;
+      background: radial-gradient(circle at 30% 30%, #ff6b6b, var(--sk-food));
+      border-radius: 50%;
+      box-shadow: 
+        0 0 16px rgba(248,81,73,0.7),
+        inset 0 -2px 4px rgba(0,0,0,0.3);
+      animation: sk-food-pulse 0.9s ease-in-out infinite;
     }
     @keyframes sk-food-pulse {
-      0%,100% { box-shadow: 0 0 6px rgba(255,34,34,0.4); }
-      50%     { box-shadow: 0 0 16px rgba(255,34,34,0.9); }
+      0%, 100% { 
+        box-shadow: 0 0 12px rgba(248,81,73,0.5);
+        transform: scale(1);
+      }
+      50% { 
+        box-shadow: 0 0 24px rgba(248,81,73,0.9);
+        transform: scale(1.1);
+      }
     }
 
     #sk-overlay {
@@ -317,64 +362,113 @@ function injectStyles() {
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 14px;
-      background: rgba(5,10,5,0.88);
+      gap: 12px;
+      background: rgba(13,17,23,0.82);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       z-index: 10;
+      border-radius: 12px;
     }
     #sk-overlay-title {
-      font-size: 1.8rem;
-      font-weight: 900;
-      letter-spacing: 0.12em;
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: 0.1em;
       text-transform: uppercase;
+      color: var(--sk-green);
+      text-shadow: 0 0 40px rgba(63,185,80,0.5);
+    }
+    #sk-overlay-title.dead {
+      color: var(--sk-food);
+      text-shadow: 0 0 40px rgba(248,81,73,0.5);
     }
     #sk-overlay-score {
-      font-size: 1rem;
-      opacity: 0.8;
+      font-size: 1.1rem;
+      color: #c9d1d9;
+      font-weight: 600;
     }
     #sk-overlay-best {
-      font-size: 0.85rem;
+      font-size: 0.9rem;
+      color: #d29922;
+      font-weight: 600;
     }
     #sk-overlay-btn {
-      background: none;
-      border: 1px solid var(--sk-green);
-      color: var(--sk-green);
-      font-family: var(--sk-font);
-      font-size: 0.8rem;
-      padding: 8px 24px;
-      cursor: pointer;
-      letter-spacing: 0.1em;
-      border-radius: 2px;
-      margin-top: 8px;
-    }
-    #sk-overlay-btn:hover { background: var(--sk-green-dim); }
-    #sk-overlay-change {
-      background: none;
+      background: var(--sk-green);
       border: none;
-      color: var(--sk-green);
+      color: #0d1117;
       font-family: var(--sk-font);
-      font-size: 0.7rem;
+      font-size: 0.78rem;
+      font-weight: 700;
+      padding: 10px 28px;
       cursor: pointer;
-      opacity: 0.6;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.08em;
+      border-radius: 8px;
+      margin-top: 12px;
+      transition: all 0.15s, transform 0.1s;
     }
-    #sk-overlay-change:hover { opacity: 1; }
+    #sk-overlay-btn:hover { 
+      background: #56d364; 
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(63,185,80,0.4);
+    }
+    #sk-overlay-btn:active { transform: scale(0.96); }
+    #sk-overlay-change {
+      background: transparent;
+      border: none;
+      color: #6e7681;
+      font-family: var(--sk-font);
+      font-size: 0.72rem;
+      cursor: pointer;
+      letter-spacing: 0.05em;
+      transition: color 0.15s;
+    }
+    #sk-overlay-change:hover { color: var(--sk-accent); }
 
     #sk-controls-hint {
-      font-size: 0.6rem;
-      letter-spacing: 0.08em;
+      font-size: 0.62rem;
+      letter-spacing: 0.1em;
       text-align: center;
-      padding: 8px;
-      opacity: 0.35;
+      padding: 10px;
+      color: #484f58;
+      background: var(--sk-surface);
       border-top: 1px solid var(--sk-border);
       flex-shrink: 0;
     }
 
-    @keyframes sk-flash {
-      0%, 100% { color: var(--sk-green); text-shadow: none; }
-      50% { color: #fff; text-shadow: 0 0 20px rgba(57,255,20,0.9); }
+    /* High score flash */
+    @keyframes sk-hs-flash {
+      0%, 100% { 
+        color: #d29922; 
+        text-shadow: none;
+        transform: scale(1);
+      }
+      50% { 
+        color: #fff; 
+        text-shadow: 0 0 20px rgba(210,153,34,0.8);
+        transform: scale(1.1);
+      }
     }
-    .sk-high-flash {
-      animation: sk-flash 0.4s ease 3;
+    .sk-hs-anim {
+      animation: sk-hs-flash 0.35s ease 3;
+    }
+
+    /* New high score confetti burst */
+    .sk-confetti {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      border-radius: 2px;
+      animation: sk-confetti-fall 1s ease-out forwards;
+      pointer-events: none;
+    }
+    @keyframes sk-confetti-fall {
+      0% {
+        opacity: 1;
+        transform: translateY(0) rotate(0deg) scale(1);
+      }
+      100% {
+        opacity: 0;
+        transform: translateY(80px) rotate(720deg) scale(0.3);
+      }
     }
   `;
   document.head.appendChild(st);
@@ -533,19 +627,20 @@ function onDead() {
     highScore = state.score;
     saveHighScore();
     playHS();
+    spawnConfetti();
   }
   
   const title = containerEl.querySelector('#sk-overlay-title');
   title.textContent = 'GAME OVER';
-  title.style.color = '#ff2240';
+  title.classList.add('dead');
   
   containerEl.querySelector('#sk-overlay-score').textContent = `Score: ${state.score}`;
   
   const bestEl = containerEl.querySelector('#sk-overlay-best');
   bestEl.textContent = `Best: ${highScore}`;
   if (isNewHS) {
-    bestEl.classList.add('sk-high-flash');
-    setTimeout(() => bestEl.classList.remove('sk-high-flash'), 1200);
+    bestEl.classList.add('sk-hs-anim');
+    setTimeout(() => bestEl.classList.remove('sk-hs-anim'), 1050);
   }
   
   containerEl.querySelector('#sk-overlay-btn').textContent = 'PRESS SPACE TO RESTART';
@@ -554,10 +649,27 @@ function onDead() {
   containerEl.querySelector('#sk-overlay').style.display = 'flex';
 }
 
+function spawnConfetti() {
+  const overlay = containerEl.querySelector('#sk-overlay');
+  if (!overlay) return;
+  const colors = ['#f85149', '#d29922', '#3fb950', '#58a6ff', '#a371f7'];
+  for (let i = 0; i < 20; i++) {
+    const conf = document.createElement('div');
+    conf.className = 'sk-confetti';
+    conf.style.background = colors[Math.floor(Math.random() * colors.length)];
+    conf.style.left = (30 + Math.random() * 40) + '%';
+    conf.style.top = (20 + Math.random() * 30) + '%';
+    conf.style.animationDelay = (Math.random() * 0.3) + 's';
+    overlay.appendChild(conf);
+    setTimeout(() => conf.remove(), 1200);
+  }
+}
+
 function showReadyOverlay() {
   const cfg = getDifficultySettings(currentDifficulty);
-  containerEl.querySelector('#sk-overlay-title').textContent = 'PRESS SPACE TO START';
-  containerEl.querySelector('#sk-overlay-title').style.color = 'var(--sk-green)';
+  const title = containerEl.querySelector('#sk-overlay-title');
+  title.textContent = 'PRESS SPACE TO START';
+  title.classList.remove('dead');
   containerEl.querySelector('#sk-overlay-score').textContent = currentDifficulty.toUpperCase();
   containerEl.querySelector('#sk-overlay-best').textContent = '';
   containerEl.querySelector('#sk-overlay-btn').textContent = '';
@@ -677,16 +789,16 @@ export function render(container, options) {
         <button class="sk-diff" data-diff="hard">HARD</button>
       </div>
       <div id="sk-hud">
-        <div id="sk-score-box">
+        <div class="sk-hud-card">
           <div class="sk-hud-label">SCORE</div>
           <div id="sk-score">000</div>
         </div>
-        <div id="sk-highscore-box">
+        <div class="sk-hud-card">
           <div class="sk-hud-label">BEST</div>
           <div id="sk-highscore">000</div>
         </div>
-        <div id="sk-speed-box">
-          <div class="sk-hud-label">SPEED</div>
+        <div class="sk-hud-card">
+          <div class="sk-hud-label">LEVEL</div>
           <div id="sk-speed">1</div>
         </div>
       </div>

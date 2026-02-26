@@ -196,8 +196,6 @@ let activeDifficulty = 'beginner';
 let currentSection = null;   // { x, y } for endless
 let optRef = null;
 
-const CELL_NUM_COLORS = ['', '#4ade80','#facc15','#f87171','#818cf8','#f97316','#22d3ee','#e879f9','#f8fafc'];
-
 // ── CSS injection ─────────────────────────────────────────────────────────────
 
 function injectStyles() {
@@ -206,19 +204,21 @@ function injectStyles() {
   st.id = 'ms-styles';
   st.textContent = `
     #ms-root {
-      --ms-bg: #050a05;
-      --ms-surface: #091209;
-      --ms-green: #39ff14;
-      --ms-green-dim: rgba(57,255,20,0.18);
-      --ms-green-mid: rgba(57,255,20,0.45);
-      --ms-cell-border: rgba(57,255,20,0.12);
-      --ms-cell-bg: #0a140a;
-      --ms-cell-rev: #111a11;
-      --ms-cell-flag: #1a2a0a;
-      --ms-mine-red: #ff2240;
+      --ms-bg: #0d1117;
+      --ms-surface: #161b22;
+      --ms-accent: #58a6ff;
+      --ms-green: #3fb950;
+      --ms-red: #f85149;
+      --ms-yellow: #d29922;
+      --ms-cell-bg: #21262d;
+      --ms-cell-hover: #30363d;
+      --ms-cell-revealed: #161b22;
+      --ms-cell-border: #30363d;
+      --ms-flag: #f85149;
+      --ms-mine: #f85149;
       --ms-font: 'DM Mono','Courier New',monospace;
       background: var(--ms-bg);
-      color: var(--ms-green);
+      color: #c9d1d9;
       font-family: var(--ms-font);
       display: flex;
       flex-direction: column;
@@ -230,67 +230,77 @@ function injectStyles() {
     #ms-topbar {
       display: flex;
       align-items: center;
-      gap: 14px;
-      padding: 8px 14px;
+      gap: 12px;
+      padding: 10px 16px;
+      background: var(--ms-surface);
       border-bottom: 1px solid var(--ms-cell-border);
       flex-shrink: 0;
     }
     #ms-topbar-title {
-      font-size: 0.72rem;
-      letter-spacing: 0.1em;
-      color: var(--ms-green);
-      opacity: 0.7;
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      color: var(--ms-accent);
       text-transform: uppercase;
     }
-    #ms-flag-count, #ms-timer {
-      font-size: 0.9rem;
-      letter-spacing: 0.08em;
-      min-width: 56px;
-      text-align: center;
-    }
-    #ms-timer { color: var(--ms-green-mid); }
-    #ms-flag-count { color: var(--ms-green); }
-    #ms-reset-btn {
-      background: none;
+    .ms-hud-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--ms-cell-bg);
       border: 1px solid var(--ms-cell-border);
-      color: var(--ms-green);
-      font-family: var(--ms-font);
-      font-size: 0.75rem;
-      padding: 3px 10px;
-      cursor: pointer;
-      letter-spacing: 0.05em;
-      transition: border-color 0.15s, color 0.15s;
-      border-radius: 2px;
-    }
-    #ms-reset-btn:hover { border-color: var(--ms-green); color: #fff; }
-    #ms-home-btn {
-      background: none;
-      border: none;
-      color: var(--ms-green);
-      font-family: var(--ms-font);
-      font-size: 0.75rem;
-      padding: 3px 8px;
-      cursor: pointer;
-      opacity: 0.6;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 0.8rem;
+      font-weight: 600;
       letter-spacing: 0.05em;
     }
-    #ms-home-btn:hover { opacity: 1; }
+    .ms-hud-pill .ms-icon { font-size: 0.85rem; }
+    #ms-flag-count { color: var(--ms-red); }
+    #ms-timer { color: var(--ms-accent); }
     .ms-spacer { flex: 1; }
+    #ms-reset-btn {
+      background: var(--ms-accent);
+      border: none;
+      color: #0d1117;
+      font-family: var(--ms-font);
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 6px 14px;
+      cursor: pointer;
+      letter-spacing: 0.05em;
+      border-radius: 6px;
+      transition: all 0.15s, transform 0.1s;
+    }
+    #ms-reset-btn:hover { background: #79c0ff; transform: translateY(-1px); }
+    #ms-reset-btn:active { transform: scale(0.96); }
+    #ms-home-btn {
+      background: transparent;
+      border: 1px solid var(--ms-cell-border);
+      color: #8b949e;
+      font-family: var(--ms-font);
+      font-size: 0.72rem;
+      padding: 6px 12px;
+      cursor: pointer;
+      letter-spacing: 0.05em;
+      border-radius: 6px;
+      transition: all 0.15s;
+    }
+    #ms-home-btn:hover { border-color: var(--ms-accent); color: var(--ms-accent); }
     #ms-body {
       flex: 1;
       display: flex;
       overflow: hidden;
     }
-    /* Phone: stacked */
     body.layout-phone #ms-body { flex-direction: column; }
-    /* Web: side-by-side */
     body.layout-web #ms-body { flex-direction: row; }
 
     #ms-sidebar {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 6px;
       padding: 12px;
+      background: var(--ms-surface);
       border-right: 1px solid var(--ms-cell-border);
       flex-shrink: 0;
       overflow-y: auto;
@@ -303,30 +313,33 @@ function injectStyles() {
       padding: 8px 10px;
     }
     .ms-mode-btn {
-      background: none;
+      background: var(--ms-cell-bg);
       border: 1px solid var(--ms-cell-border);
-      color: var(--ms-green);
+      color: #8b949e;
       font-family: var(--ms-font);
-      font-size: 0.7rem;
-      padding: 6px 10px;
+      font-size: 0.68rem;
+      padding: 8px 12px;
       cursor: pointer;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.04em;
       text-align: left;
-      border-radius: 2px;
-      transition: all 0.12s;
+      border-radius: 6px;
+      transition: all 0.15s, transform 0.1s;
       white-space: nowrap;
     }
     .ms-mode-btn:hover, .ms-mode-btn.active {
-      background: var(--ms-green-dim);
-      border-color: var(--ms-green);
+      background: var(--ms-accent);
+      border-color: var(--ms-accent);
+      color: #0d1117;
+      font-weight: 600;
     }
-    .ms-mode-btn.active { font-weight: 700; }
+    .ms-mode-btn:active { transform: scale(0.97); }
     .ms-section-label {
       font-size: 0.6rem;
-      letter-spacing: 0.12em;
+      font-weight: 600;
+      letter-spacing: 0.1em;
       text-transform: uppercase;
-      opacity: 0.45;
-      padding: 4px 2px 2px;
+      color: #484f58;
+      padding: 8px 4px 4px;
     }
     body.layout-phone .ms-section-label { display: none; }
 
@@ -337,12 +350,26 @@ function injectStyles() {
       justify-content: center;
       overflow: hidden;
       position: relative;
-      padding: 8px;
+      padding: 16px;
     }
     #ms-board {
       display: grid;
-      gap: 1px;
+      gap: 2px;
       line-height: 1;
+      background: var(--ms-surface);
+      padding: 4px;
+      border-radius: 8px;
+      box-shadow: 
+        0 4px 24px rgba(0,0,0,0.4),
+        inset 0 1px 0 rgba(255,255,255,0.03);
+    }
+    #ms-board.shake {
+      animation: ms-shake 0.15s ease-out;
+    }
+    @keyframes ms-shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-4px); }
+      75% { transform: translateX(4px); }
     }
     .ms-cell {
       display: flex;
@@ -351,44 +378,66 @@ function injectStyles() {
       font-family: var(--ms-font);
       font-weight: 700;
       cursor: pointer;
-      background: var(--ms-cell-bg);
-      border: 1px solid var(--ms-cell-border);
-      border-radius: 2px;
-      transition: background 0.08s;
+      background: linear-gradient(180deg, #3d444d 0%, #30363d 100%);
+      border: 1px solid #484f58;
+      border-radius: 4px;
+      transition: all 0.08s;
       box-sizing: border-box;
       overflow: hidden;
-    }
-    .ms-cell.revealed {
-      background: var(--ms-cell-rev);
-      border-color: rgba(57,255,20,0.07);
-      cursor: default;
-    }
-    .ms-cell.flagged {
-      background: var(--ms-cell-flag);
-      border-color: var(--ms-green-mid);
-      color: var(--ms-green);
-    }
-    .ms-cell.mine-hit {
-      background: rgba(255,34,64,0.3);
-      border-color: var(--ms-mine-red);
-      animation: ms-explode 0.3s ease-out;
-    }
-    .ms-cell.mine-shown {
-      background: rgba(255,34,64,0.12);
-      border-color: rgba(255,34,64,0.3);
+      box-shadow: 
+        inset 0 1px 0 rgba(255,255,255,0.08),
+        inset 0 -1px 0 rgba(0,0,0,0.15);
     }
     .ms-cell:not(.revealed):not(.flagged):hover {
-      background: var(--ms-green-dim);
+      background: linear-gradient(180deg, #484f58 0%, #3d444d 100%);
+      border-color: #6e7681;
+      transform: translateY(-1px);
+    }
+    .ms-cell:not(.revealed):not(.flagged):active {
+      transform: scale(0.94);
+      background: #21262d;
+    }
+    .ms-cell.revealed {
+      background: var(--ms-cell-revealed);
+      border-color: #21262d;
+      cursor: default;
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);
+    }
+    .ms-cell.flagged {
+      background: linear-gradient(180deg, #3d444d 0%, #30363d 100%);
+      border-color: var(--ms-flag);
+      color: var(--ms-flag);
+    }
+    .ms-cell.mine-hit {
+      background: linear-gradient(180deg, #f85149 0%, #da3633 100%);
+      border-color: #ff7b72;
+      animation: ms-explode 0.4s ease-out;
+    }
+    .ms-cell.mine-shown {
+      background: rgba(248,81,73,0.15);
+      border-color: rgba(248,81,73,0.3);
     }
     @keyframes ms-explode {
-      0%  { transform: scale(1.4); background: var(--ms-mine-red); }
+      0%  { transform: scale(1.3); background: #f85149; }
+      50% { transform: scale(1.1); }
       100%{ transform: scale(1); }
     }
     @keyframes ms-reveal {
-      0%  { opacity: 0; transform: scale(0.7); }
+      0%  { opacity: 0; transform: scale(0.6); }
+      70% { transform: scale(1.05); }
       100%{ opacity: 1; transform: scale(1); }
     }
-    .ms-cell.just-revealed { animation: ms-reveal 0.12s ease-out; }
+    .ms-cell.just-revealed { animation: ms-reveal 0.15s ease-out; }
+
+    /* Modern number colors */
+    .ms-cell[data-num="1"] { color: #58a6ff; }
+    .ms-cell[data-num="2"] { color: #3fb950; }
+    .ms-cell[data-num="3"] { color: #f85149; }
+    .ms-cell[data-num="4"] { color: #a371f7; }
+    .ms-cell[data-num="5"] { color: #db6d28; }
+    .ms-cell[data-num="6"] { color: #2ea043; }
+    .ms-cell[data-num="7"] { color: #8b949e; }
+    .ms-cell[data-num="8"] { color: #6e7681; }
 
     /* Overlay */
     #ms-overlay {
@@ -398,33 +447,72 @@ function injectStyles() {
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 14px;
-      background: rgba(5,10,5,0.82);
+      gap: 16px;
+      background: rgba(13,17,23,0.85);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
       z-index: 10;
+      border-radius: 8px;
     }
     #ms-overlay-title {
-      font-size: 1.6rem;
-      font-weight: 900;
-      letter-spacing: 0.12em;
+      font-size: 1.8rem;
+      font-weight: 800;
+      letter-spacing: 0.1em;
       text-transform: uppercase;
     }
+    #ms-overlay-title.win { 
+      color: var(--ms-green); 
+      text-shadow: 0 0 30px rgba(63,185,80,0.5);
+    }
+    #ms-overlay-title.lose { 
+      color: var(--ms-red); 
+      text-shadow: 0 0 30px rgba(248,81,73,0.5);
+    }
     #ms-overlay-sub {
-      font-size: 0.78rem;
-      opacity: 0.7;
-      letter-spacing: 0.06em;
+      font-size: 0.82rem;
+      color: #8b949e;
+      letter-spacing: 0.04em;
     }
     #ms-overlay-btn {
-      background: none;
-      border: 1px solid var(--ms-green);
-      color: var(--ms-green);
+      background: var(--ms-accent);
+      border: none;
+      color: #0d1117;
       font-family: var(--ms-font);
-      font-size: 0.85rem;
-      padding: 8px 24px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      padding: 10px 28px;
       cursor: pointer;
-      letter-spacing: 0.1em;
-      border-radius: 2px;
+      letter-spacing: 0.08em;
+      border-radius: 8px;
+      transition: all 0.15s, transform 0.1s;
     }
-    #ms-overlay-btn:hover { background: var(--ms-green-dim); }
+    #ms-overlay-btn:hover { background: #79c0ff; transform: translateY(-2px); }
+    #ms-overlay-btn:active { transform: scale(0.96); }
+
+    /* Win glow sweep */
+    #ms-board.win-glow {
+      animation: ms-win-glow 0.8s ease-out;
+    }
+    @keyframes ms-win-glow {
+      0% { box-shadow: 0 0 0 rgba(63,185,80,0); }
+      50% { box-shadow: 0 0 40px rgba(63,185,80,0.6), inset 0 0 20px rgba(63,185,80,0.2); }
+      100% { box-shadow: 0 4px 24px rgba(0,0,0,0.4); }
+    }
+
+    /* Loss red pulse */
+    #ms-board.loss-pulse::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(248,81,73,0.15);
+      border-radius: 8px;
+      animation: ms-loss-pulse 0.3s ease-out;
+      pointer-events: none;
+    }
+    @keyframes ms-loss-pulse {
+      0% { opacity: 1; }
+      100% { opacity: 0; }
+    }
 
     /* Endless map */
     #ms-map-wrap {
@@ -433,27 +521,50 @@ function injectStyles() {
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 10px;
-      padding: 8px;
+      gap: 12px;
+      padding: 16px;
       overflow: auto;
     }
-    #ms-map { display: grid; gap: 3px; }
+    #ms-map { display: grid; gap: 4px; }
     .ms-map-cell {
-      width: 28px; height: 28px;
+      width: 32px; height: 32px;
       display: flex; align-items: center; justify-content: center;
-      font-size: 0.6rem; font-family: var(--ms-font);
+      font-size: 0.65rem; font-family: var(--ms-font); font-weight: 600;
       border: 1px solid var(--ms-cell-border);
       background: var(--ms-cell-bg);
       cursor: pointer;
-      border-radius: 2px;
-      transition: all 0.1s;
+      border-radius: 6px;
+      transition: all 0.12s, transform 0.1s;
       box-sizing: border-box;
     }
-    .ms-map-cell.cleared { background: var(--ms-green-dim); border-color: var(--ms-green-mid); color: var(--ms-green); }
-    .ms-map-cell.active { border-color: var(--ms-green); color: var(--ms-green); }
-    .ms-map-cell.current { background: rgba(57,255,20,0.25); border-color: var(--ms-green); font-weight: 700; }
-    .ms-map-cell.locked { opacity: 0.3; cursor: default; }
-    .ms-map-cell:not(.locked):hover { background: var(--ms-green-dim); }
+    .ms-map-cell.cleared { 
+      background: linear-gradient(135deg, #238636 0%, #2ea043 100%); 
+      border-color: #3fb950; 
+      color: #fff; 
+    }
+    .ms-map-cell.active { 
+      border-color: var(--ms-accent); 
+      color: var(--ms-accent);
+      box-shadow: 0 0 12px rgba(88,166,255,0.3);
+    }
+    .ms-map-cell.current { 
+      background: rgba(88,166,255,0.2); 
+      border-color: var(--ms-accent); 
+      color: #fff; 
+      font-weight: 700;
+    }
+    .ms-map-cell.locked { opacity: 0.25; cursor: default; }
+    .ms-map-cell:not(.locked):hover { 
+      background: var(--ms-cell-hover); 
+      transform: translateY(-2px);
+    }
+    .ms-map-label {
+      font-size: 0.68rem;
+      color: #484f58;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
   `;
   document.head.appendChild(st);
 }
@@ -469,8 +580,14 @@ export function render(container, options) {
     <div id="ms-root">
       <div id="ms-topbar">
         <span id="ms-topbar-title">💣 MINESWEEPER</span>
-        <span id="ms-flag-count">⚑ 0</span>
-        <span id="ms-timer">00:00</span>
+        <div class="ms-hud-pill">
+          <span class="ms-icon">🚩</span>
+          <span id="ms-flag-count">0</span>
+        </div>
+        <div class="ms-hud-pill">
+          <span class="ms-icon">⏱</span>
+          <span id="ms-timer">00:00</span>
+        </div>
         <div class="ms-spacer"></div>
         <button id="ms-reset-btn">RESET</button>
         <button id="ms-home-btn">← SOLO</button>
@@ -638,6 +755,11 @@ function onClassicWin() {
   const b = classicState.board;
   const elapsed = b.endTime && b.startTime ? Math.round((b.endTime - b.startTime) / 1000) : 0;
   renderBoard();
+  const board = containerEl.querySelector('#ms-board');
+  if (board) {
+    board.classList.add('win-glow');
+    setTimeout(() => board.classList.remove('win-glow'), 800);
+  }
   showOverlay('✓ CLEARED', `Time: ${formatTime(elapsed)}`, 'PLAY AGAIN');
   optRef?.onGameEnd?.('classic', 'win', { difficulty: activeDifficulty, timeSeconds: elapsed });
 }
@@ -645,6 +767,11 @@ function onClassicWin() {
 function onClassicLose(hx, hy) {
   stopTimer();
   renderBoard(hx, hy);
+  const board = containerEl.querySelector('#ms-board');
+  if (board) {
+    board.classList.add('shake', 'loss-pulse');
+    setTimeout(() => board.classList.remove('shake', 'loss-pulse'), 300);
+  }
   showOverlay('✗ BOOM', 'A mine was triggered.', 'TRY AGAIN');
   optRef?.onGameEnd?.('classic', 'lose', { difficulty: activeDifficulty });
 }
@@ -667,7 +794,7 @@ function showEndlessMap() {
   const boardWrap = containerEl.querySelector('#ms-board-wrap');
   boardWrap.innerHTML = `
     <div id="ms-map-wrap">
-      <div style="font-size:0.65rem;opacity:0.5;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:4px">World Map — click a section to play</div>
+      <div class="ms-map-label">World Map — click a section to play</div>
       <div id="ms-map"></div>
     </div>
     <div id="ms-overlay" style="display:none">
@@ -711,8 +838,8 @@ function renderEndlessMap() {
 
   const cols = maxX - minX + 1;
   const rows = maxY - minY + 1;
-  mapEl.style.gridTemplateColumns = `repeat(${cols}, 28px)`;
-  mapEl.style.gridTemplateRows = `repeat(${rows}, 28px)`;
+  mapEl.style.gridTemplateColumns = `repeat(${cols}, 32px)`;
+  mapEl.style.gridTemplateRows = `repeat(${rows}, 32px)`;
   mapEl.innerHTML = '';
 
   for (let r = minY; r <= maxY; r++) {
@@ -722,12 +849,12 @@ function renderEndlessMap() {
       el.dataset.gx = c; el.dataset.gy = r;
       const key = sectionKey(c, r);
       const sect = endlessWorld.sections[key];
-      if (!sect) { el.classList.add('locked'); }
+      if (!sect) { el.classList.add('locked'); el.textContent = '·'; }
       else if (sect.status === 'cleared') { el.classList.add('cleared'); el.textContent = '✓'; }
       else {
         el.classList.add('active');
         if (currentSection.x === c && currentSection.y === r) el.classList.add('current');
-        el.textContent = `${minesFor(chebyshev(c, r))}`;
+        el.textContent = minesFor(chebyshev(c, r));
       }
       mapEl.appendChild(el);
     }
@@ -900,11 +1027,12 @@ function renderBoard(explodedX, explodedY) {
 
 function applyCellContent(el, c, isExploded) {
   el.className = 'ms-cell';
+  el.removeAttribute('data-num');
   el.textContent = '';
   if (c.state === 'hidden') return;
   if (c.state === 'flagged') {
     el.classList.add('flagged');
-    el.textContent = '⚑';
+    el.textContent = '🚩';
     return;
   }
   // revealed
@@ -912,13 +1040,12 @@ function applyCellContent(el, c, isExploded) {
   if (c.mine) {
     if (isExploded) el.classList.add('mine-hit');
     else el.classList.add('mine-shown');
-    el.textContent = '●';
-    el.style.color = isExploded ? '#ff2240' : 'rgba(255,34,64,0.6)';
+    el.textContent = '💣';
     return;
   }
   if (c.adjacency > 0) {
     el.textContent = c.adjacency;
-    el.style.color = CELL_NUM_COLORS[c.adjacency] || '#f8fafc';
+    el.setAttribute('data-num', c.adjacency);
   }
 }
 
@@ -970,9 +1097,9 @@ function updateHUD() {
   const flagEl = containerEl.querySelector('#ms-flag-count');
   const timeEl = containerEl.querySelector('#ms-timer');
   if (!flagEl || !timeEl) return;
-  if (!b) { flagEl.textContent = '⚑ 0'; timeEl.textContent = '00:00'; return; }
+  if (!b) { flagEl.textContent = '0'; timeEl.textContent = '00:00'; return; }
   const remaining = b.mineCount - b.flagCount;
-  flagEl.textContent = `⚑ ${remaining}`;
+  flagEl.textContent = String(remaining);
   if (b.startTime) {
     const elapsed = b.endTime ? b.endTime - b.startTime : Date.now() - b.startTime;
     timeEl.textContent = formatTime(Math.floor(elapsed / 1000));
@@ -1004,7 +1131,10 @@ function showOverlay(title, sub, btnLabel) {
   const t = ov.querySelector('#ms-overlay-title');
   const s = ov.querySelector('#ms-overlay-sub');
   const b = ov.querySelector('#ms-overlay-btn');
-  if (t) { t.textContent = title; t.style.color = title.startsWith('✓') ? 'var(--ms-green)' : 'var(--ms-mine-red)'; }
+  if (t) {
+    t.textContent = title;
+    t.className = title.startsWith('✓') ? 'win' : 'lose';
+  }
   if (s) s.textContent = sub;
   if (b) b.textContent = btnLabel;
 }
