@@ -226,8 +226,8 @@ function renderCard(cardData, theme, options) {
     ? options.faceDown
     : (cardData && cardData.hole);
   const isSmall = options.size === 'small';
-  const W = isSmall ? 'clamp(35px,4.5vw,55px)' : 'clamp(42px,6vw,62px)';
-  const H = isSmall ? 'clamp(49px,6.3vw,77px)' : 'clamp(59px,8.4vw,87px)';
+  const W = isSmall ? 'clamp(35px,4.5vw,55px)' : 'clamp(55px,7vw,80px)';
+  const H = isSmall ? 'clamp(49px,6.3vw,77px)' : 'clamp(77px,9.8vw,112px)';
 
   const wrap = document.createElement('div');
   wrap.className = 'bj-card';
@@ -413,7 +413,7 @@ function buildDOM(container, state) {
   dealerLabel.textContent = 'DEALER';
   const dealerHand = document.createElement('div');
   dealerHand.id = 'bj-dealer-hand';
-  dealerHand.style.cssText = 'display:flex;position:relative;height:clamp(75px,11vw,110px);min-width:clamp(50px,7vw,75px);';
+  dealerHand.style.cssText = 'display:flex;position:relative;height:clamp(80px,10.5vw,116px);min-width:clamp(58px,8vw,84px);';
   const dealerTotal = document.createElement('div');
   dealerTotal.id = 'bj-dealer-total';
   dealerTotal.style.cssText = 'display:none;background:rgba(0,0,0,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:10px;padding:2px 8px;color:white;font-size:clamp(9px,1.1vw,12px);font-weight:bold;';
@@ -555,13 +555,13 @@ function buildSeats(state) {
     // Hand container
     const handContainer = document.createElement('div');
     handContainer.className = 'bj-seat-hand';
-    const cardH = isLocal ? 'clamp(65px,9.5vw,100px)' : 'clamp(49px,6.3vw,77px)';
-    const minW = isLocal ? 'clamp(45px,6.5vw,70px)' : 'clamp(35px,4.5vw,55px)';
+    const cardH = isLocal ? 'clamp(80px,10.5vw,116px)' : 'clamp(51px,6.5vw,79px)';
+    const minW = isLocal ? 'clamp(58px,8vw,84px)' : 'clamp(35px,4.5vw,55px)';
     handContainer.style.cssText = 'display:flex;position:relative;height:' + cardH + ';min-width:' + minW + ';';
     // Opponents' hands face away (rotated 180°)
     if (!isLocal) handContainer.style.transform = 'rotate(180deg)';
 
-    const offset = isLocal ? 'clamp(18px,2.4vw,26px)' : 'clamp(12px,1.6vw,18px)';
+    const offset = isLocal ? 'clamp(22px,3vw,32px)' : 'clamp(12px,1.6vw,18px)';
     (player.hand || []).forEach(function(card, ci) {
       const cardEl = renderCard(card, cardTheme, { size: isLocal ? 'normal' : 'small' });
       cardEl.style.position = 'absolute';
@@ -623,14 +623,14 @@ function dealCard(cardEl, destContainer, cardIndex, delay, isSmall) {
     requestAnimationFrame(function() {
       requestAnimationFrame(function() {
         const dr = destContainer.getBoundingClientRect();
-        const offset = isSmall ? 14 : 22;
+        const offset = isSmall ? 14 : 28;
         const offsetPx = cardIndex * offset;
         cardEl.style.transition = 'all 0.32s cubic-bezier(0.25,0.46,0.45,0.94)';
         cardEl.style.left = (dr.left + offsetPx) + 'px';
         cardEl.style.top = dr.top + 'px';
         setTimeout(function() {
           if (!cardEl.parentNode || cardEl.parentNode !== document.body) return;
-          const offsetStr = isSmall ? 'clamp(12px,1.6vw,18px)' : 'clamp(18px,2.4vw,26px)';
+          const offsetStr = isSmall ? 'clamp(12px,1.6vw,18px)' : 'clamp(22px,3vw,32px)';
           cardEl.style.position = 'absolute';
           cardEl.style.left = 'calc(' + cardIndex + ' * ' + offsetStr + ')';
           cardEl.style.top = '0';
@@ -710,7 +710,7 @@ function syncDealerHand(state, prev) {
     cards.forEach(function(card, i) {
       const el = renderCard(card, cardTheme, { size: 'normal' });
       el.style.position = 'absolute';
-      el.style.left = 'calc(' + i + ' * clamp(18px,2.4vw,26px))';
+      el.style.left = 'calc(' + i + ' * clamp(22px,3vw,32px))';
       el.style.top = '0';
       el.style.zIndex = String(i + 1);
       if (i >= prevCards.length) {
@@ -758,7 +758,7 @@ function syncSeat(player, prev) {
     const existing = handContainer.querySelectorAll('.bj-card');
     if (cards.length !== existing.length) {
       handContainer.innerHTML = '';
-      const offset = isLocal ? 'clamp(18px,2.4vw,26px)' : 'clamp(12px,1.6vw,18px)';
+      const offset = isLocal ? 'clamp(22px,3vw,32px)' : 'clamp(12px,1.6vw,18px)';
       cards.forEach(function(card, ci) {
         const el = renderCard(card, cardTheme, { size: isLocal ? 'normal' : 'small' });
         el.style.position = 'absolute';

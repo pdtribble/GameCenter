@@ -48,7 +48,7 @@ function injectStyles() {
   animation:pk-turn-glow 1s ease-in-out infinite alternate;pointer-events:none;z-index:1;
 }
 .pk-community-slot {
-  width:clamp(42px,6vw,62px);height:clamp(59px,8.4vw,87px);
+  width:clamp(55px,7vw,80px);height:clamp(77px,9.8vw,112px);
   border:2px dashed rgba(255,255,255,0.12);border-radius:6px;
   display:flex;align-items:center;justify-content:center;
   color:rgba(255,255,255,0.1);font-size:1.2rem;flex-shrink:0;
@@ -91,8 +91,8 @@ function renderCard(cardData, theme, options) {
   options = options || {};
   const faceDown = options.faceDown !== undefined ? options.faceDown : (cardData && cardData.hole);
   const isSmall = options.size === 'small';
-  const W = isSmall ? 'clamp(35px,4.5vw,55px)' : 'clamp(42px,6vw,62px)';
-  const H = isSmall ? 'clamp(49px,6.3vw,77px)' : 'clamp(59px,8.4vw,87px)';
+  const W = isSmall ? 'clamp(35px,4.5vw,55px)' : 'clamp(55px,7vw,80px)';
+  const H = isSmall ? 'clamp(49px,6.3vw,77px)' : 'clamp(77px,9.8vw,112px)';
 
   const wrap = document.createElement('div');
   wrap.className = 'pk-card';
@@ -338,11 +338,11 @@ function buildSeats(state) {
     // Hand
     const handContainer = document.createElement('div');
     handContainer.className = 'pk-seat-hand';
-    const cardH = isLocal ? 'clamp(65px,9.5vw,100px)' : 'clamp(49px,6.3vw,77px)';
+    const cardH = isLocal ? 'clamp(80px,10.5vw,116px)' : 'clamp(51px,6.5vw,79px)';
     handContainer.style.cssText = 'display:flex;position:relative;height:' + cardH + ';min-width:40px;';
     if (!isLocal) handContainer.style.transform = 'rotate(180deg)';
 
-    const offset = isLocal ? 'clamp(18px,2.4vw,26px)' : 'clamp(12px,1.6vw,18px)';
+    const offset = isLocal ? 'clamp(22px,3vw,32px)' : 'clamp(12px,1.6vw,18px)';
     const hand = player.hand || [];
     hand.forEach(function(card, ci) {
       // Opponents' hole cards: face-down unless showdown

@@ -91,8 +91,8 @@ function renderCard(cardData, theme, options) {
   options = options || {};
   const faceDown = options.faceDown !== undefined ? options.faceDown : false;
   const isSmall = options.size === 'small';
-  const W = isSmall ? 'clamp(30px,3.8vw,48px)' : 'clamp(42px,5.5vw,62px)';
-  const H = isSmall ? 'clamp(42px,5.3vw,67px)' : 'clamp(59px,7.7vw,87px)';
+  const W = isSmall ? 'clamp(35px,4.5vw,55px)' : 'clamp(55px,7vw,80px)';
+  const H = isSmall ? 'clamp(49px,6.3vw,77px)' : 'clamp(77px,9.8vw,112px)';
 
   const wrap = document.createElement('div');
   wrap.className = 'bs-card';
@@ -184,7 +184,7 @@ function buildDOM(container, state) {
 
   const pileEl = document.createElement('div');
   pileEl.id = 'bs-pile';
-  pileEl.style.cssText = 'position:relative;width:clamp(45px,6vw,65px);height:clamp(63px,8.4vw,91px);';
+  pileEl.style.cssText = 'position:relative;width:clamp(38px,4.8vw,57px);height:clamp(51px,6.5vw,79px);';
 
   const pileCount = document.createElement('div');
   pileCount.id = 'bs-pile-count';
@@ -215,7 +215,7 @@ function buildDOM(container, state) {
   handArea.style.cssText = 'width:min(90vw,900px);display:flex;flex-direction:column;align-items:center;gap:6px;padding:6px 0;flex-shrink:0;';
   const handRow = document.createElement('div');
   handRow.id = 'bs-hand-row';
-  handRow.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;justify-content:center;min-height:70px;align-items:flex-end;';
+  handRow.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;justify-content:center;min-height:90px;align-items:flex-end;';
   handArea.appendChild(handRow);
   container.appendChild(handArea);
 
@@ -286,7 +286,7 @@ function buildSeats(state) {
 
     // Face-down card fan (show actual count, stacked)
     const cardFan = document.createElement('div');
-    cardFan.style.cssText = 'position:relative;width:clamp(36px,4.5vw,52px);height:clamp(50px,6.3vw,73px);';
+    cardFan.style.cssText = 'position:relative;width:clamp(38px,4.8vw,57px);height:clamp(51px,6.5vw,79px);';
 
     const handSize = state.players?.find(function(pl) { return pl.id === p.id; })?.handSize || 0;
     const fanCount = Math.min(handSize, 5);
@@ -354,7 +354,7 @@ function renderPile(state) {
   const count = state.pileCount || 0;
   const showCount = Math.min(count, 5);
   for (let i = 0; i < showCount; i++) {
-    const card = renderCard(null, cardTheme, { faceDown: true });
+    const card = renderCard(null, cardTheme, { faceDown: true, size: 'small' });
     card.style.position = 'absolute';
     card.style.left = (i * 2) + 'px';
     card.style.top = (-i * 2) + 'px';
