@@ -550,6 +550,22 @@ export function renderHome(container, socket, state, navigate) {
       }
       if (!cfg.length) { cmSettings.innerHTML = ''; return; }
       cmSettings.innerHTML = cfg.map(field => {
+        if (field.key === 'buyIn') {
+          return `<div>
+            <label class="gc-label">${escHtml(field.label)}</label>
+            ${field.sublabel ? `<div style="font-size:0.65rem;color:var(--gc-muted);margin-bottom:4px">${escHtml(field.sublabel)}</div>` : ''}
+            <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">
+              <button type="button" class="gc-pill" data-buyin="50">50</button>
+              <button type="button" class="gc-pill" data-buyin="100">100</button>
+              <button type="button" class="gc-pill" data-buyin="250">250</button>
+              <button type="button" class="gc-pill" data-buyin="500">500</button>
+              <button type="button" class="gc-pill" data-buyin="all" style="border-color:var(--gc-red);color:var(--gc-red)">ALL IN</button>
+            </div>
+            <input class="gc-input" id="cms-${escHtml(field.key)}" type="number"
+              value="${field.default ?? 100}" min="${field.min ?? 10}" step="${field.step || 10}">
+            <div class="gc-error-msg" id="cms-${escHtml(field.key)}-error" style="display:none;margin-top:4px;font-size:0.7rem"></div>
+          </div>`;
+        }
         if (field.type === 'number') {
           return `<div>
             <label class="gc-label">${escHtml(field.label)}</label>
@@ -574,6 +590,51 @@ export function renderHome(container, socket, state, navigate) {
         }
         return '';
       }).join('');
+
+      // Wire up buy-in preset buttons
+      cmSettings.querySelectorAll('[data-buyin]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const input = cmSettings.querySelector('#cms-buyIn');
+          const errorEl = cmSettings.querySelector('#cms-buyIn-error');
+          if (!input) return;
+          if (btn.dataset.buyin === 'all') {
+            try {
+              const res = await fetch('/api/chips');
+              const data = await res.json();
+              input.value = data.chips || 0;
+            } catch (e) {
+              input.value = 0;
+            }
+          } else {
+            input.value = btn.dataset.buyin;
+          }
+          input.dispatchEvent(new Event('input'));
+        });
+      });
+
+      // Validate buy-in on input
+      const buyInInput = cmSettings.querySelector('#cms-buyIn');
+      if (buyInInput) {
+        buyInInput.addEventListener('input', async () => {
+          const errorEl = cmSettings.querySelector('#cms-buyIn-error');
+          const val = parseInt(buyInInput.value, 10) || 0;
+          let chips = 1000;
+          try {
+            const res = await fetch('/api/chips');
+            const data = await res.json();
+            chips = data.chips || 0;
+          } catch (e) { chips = 1000; }
+          if (val < 10) {
+            errorEl.textContent = 'Minimum buy-in is 10 chips';
+            errorEl.style.display = 'block';
+          } else if (val > chips) {
+            errorEl.textContent = `Not enough chips (you have ${chips})`;
+            errorEl.style.display = 'block';
+          } else {
+            errorEl.style.display = 'none';
+          }
+        });
+      }
     }
 
     if (gamesList.length) updateCmSettings();
@@ -591,11 +652,33 @@ export function renderHome(container, socket, state, navigate) {
     backdrop.querySelector('#cm-back').addEventListener('click', closeCreateModal);
     backdrop.addEventListener('click', e => { if (e.target === backdrop) closeCreateModal(); });
 
-    backdrop.querySelector('#cm-submit').addEventListener('click', () => {
+    backdrop.querySelector('#cm-submit').addEventListener('click', async () => {
       const gt         = cmGame.value;
       const nickname   = backdrop.querySelector('#cm-nickname').value.trim() || playerDisplayName || 'Player';
       const lobbyName  = backdrop.querySelector('#cm-lobby-name').value.trim() || defaultLobName || 'My Lobby';
       if (!gt) { showModalError(cmError, 'Please select a game.'); return; }
+      
+      // Validate buy-in if present
+      const buyInInput = cmSettings.querySelector('#cms-buyIn');
+      if (buyInInput) {
+        const buyInError = cmSettings.querySelector('#cms-buyIn-error');
+        const val = parseInt(buyInInput.value, 10) || 0;
+        let chips = 1000;
+        try {
+          const res = await fetch('/api/chips');
+          const data = await res.json();
+          chips = data.chips || 0;
+        } catch (e) { chips = 1000; }
+        if (val < 10) {
+          showModalError(cmError, 'Minimum buy-in is 10 chips');
+          return;
+        }
+        if (val > chips) {
+          showModalError(cmError, `Not enough chips (you have ${chips})`);
+          return;
+        }
+      }
+      
       cmError.style.display = 'none';
       const settings = collectSettings(backdrop, gt);
       socket.emit('lobby:create', {

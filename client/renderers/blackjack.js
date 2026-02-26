@@ -862,7 +862,6 @@ function showChipTray(state) {
   betAmount = 0; betChips = [];
   
   const minBet = state.minBet || 10;
-  const maxBet = state.maxBet || 500;
   const playerChips = (state.players || []).find(p => p.id === myPlayerId)?.chips || 0;
   
   tray.innerHTML = 
@@ -904,7 +903,7 @@ function showChipTray(state) {
   if (betInc) {
     const longPress = { timer: null, interval: null };
     const doInc = function() {
-      const max = Math.min(maxBet, playerChips);
+      const max = playerChips;
       betAmount = Math.min(max, betAmount + minBet);
       betDisplay.textContent = betAmount;
       updateChipTrayDisplay();
@@ -929,7 +928,7 @@ function showChipTray(state) {
   tray.querySelectorAll('.bj-quick-btn').forEach(function(btn) {
     btn.addEventListener('click', function() {
       const quick = btn.dataset.quick;
-      const max = Math.min(maxBet, playerChips);
+      const max = playerChips;
       switch(quick) {
         case 'min': betAmount = minBet; break;
         case 'half': betAmount = Math.floor(playerChips / 2); break;
@@ -937,7 +936,7 @@ function showChipTray(state) {
         case 'max': betAmount = max; break;
         case 'all': betAmount = playerChips; break;
       }
-      betAmount = Math.max(minBet, Math.min(maxBet, betAmount));
+      betAmount = Math.max(minBet, Math.min(playerChips, betAmount));
       betDisplay.textContent = betAmount;
       updateChipTrayDisplay();
     });

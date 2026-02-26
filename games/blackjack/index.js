@@ -180,9 +180,8 @@ module.exports = {
 
   getSetupConfig() {
     return [
-      { key: 'buyIn', type: 'number', label: 'Starting chips', default: 100, min: 10, max: 10000, step: 10 },
+      { key: 'buyIn', type: 'number', label: 'BUY-IN', sublabel: 'Deducted from your chips on join. Remaining chips returned when you leave.', default: 100, min: 10, max: 10000, step: 10 },
       { key: 'minBet', type: 'number', label: 'Min bet', default: 10, min: 1, max: 500, step: 1 },
-      { key: 'maxBet', type: 'number', label: 'Max bet', default: 500, min: 10, max: 5000, step: 10 },
       { key: 'cardTheme', type: 'select', label: 'Card deck', options: ['classic', 'modern', 'neon', 'gold'], default: 'classic' },
     ];
   },
@@ -190,7 +189,6 @@ module.exports = {
   initGame(players, config) {
     const buyIn = Math.max(0, parseInt(config.buyIn, 10) || 100);
     const minBet = Math.max(1, parseInt(config.minBet, 10) || 10);
-    const maxBet = Math.max(minBet, parseInt(config.maxBet, 10) || 500);
     const cardTheme = config.cardTheme || 'classic';
     const s = {
       round: 1,
@@ -199,9 +197,8 @@ module.exports = {
       dealerHand: [],
       players: players.map(p => playerEntry(p, buyIn, 0, [], 'playing', null)),
       currentPlayerId: null,
-      config: { buyIn, minBet, maxBet, cardTheme },
+      config: { buyIn, minBet, cardTheme },
       minBet,
-      maxBet,
       card_theme: cardTheme,
     };
     return dealRound(s, players);
