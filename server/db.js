@@ -169,6 +169,7 @@ function migrate() {
     VALUES (?, ?, ?, ?)
   `);
   seedGames.run('blackjack', 'Blackjack', 1, 6);
+  seedGames.run('bs', 'BS', 2, 6);
 
   // Remove deprecated game types (idempotent DELETEs)
   for (const gt of ['highest-card', 'game_night']) {
