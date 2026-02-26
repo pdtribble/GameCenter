@@ -112,14 +112,21 @@ export function renderSingleplayer(container, socket, state, navigate) {
   const snakeSavesP = playerId
     ? fetch('/api/sp/saves/snake').then(r => r.ok ? r.json() : []).catch(() => [])
     : Promise.resolve([]);
+  const t48SavesP = playerId
+    ? fetch('/api/sp/saves/2048').then(r => r.ok ? r.json() : []).catch(() => [])
+    : Promise.resolve([]);
 
   // Check if guest (to show progress warning)
   const statsApiP = fetch('/api/me/stats').then(r => r.json()).catch(() => null);
 
-  Promise.all([msStatsP, snakeSavesP, statsApiP]).then(([msStats, snakeSaves, meStats]) => {
+  Promise.all([msStatsP, snakeSavesP, t48SavesP, statsApiP]).then(([msStats, snakeSaves, t48Saves, meStats]) => {
     const snakeStats = (() => {
       const hs = snakeSaves.find(s => s.slot === 'highscore');
       return hs?.data?.highScore != null ? { highScore: hs.data.highScore } : null;
+    })();
+    const t48Stats = (() => {
+      const best = t48Saves.find(s => s.slot === 'best');
+      return best?.data?.best != null ? { best: best.data.best } : null;
     })();
     const isGuest = meStats?.isGuest === true;
     grid.innerHTML = '';
@@ -141,6 +148,15 @@ export function renderSingleplayer(container, socket, state, navigate) {
         desc:   'Classic sweeper + Endless mode. Phosphor-green terminal aesthetic.',
         accent: '#39ff14',
         stats:  msStats,
+      },
+      {
+        id:     '2048',
+        name:   '2048',
+        icon:   '🟩',
+        desc:   'Slide and merge tiles to reach 2048',
+        accent: '#39ff14',
+        stats:  t48Stats,
+        formatStats: (s) => s?.best != null ? `<span>best <span style="color:var(--gc-gold,#f0c040)">${s.best}</span></span>` : '',
       },
     ];
 
