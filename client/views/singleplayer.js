@@ -106,25 +106,41 @@ export function renderSingleplayer(container, socket, state, navigate) {
 
   // Fetch stats if session exists
   const playerId = document.cookie.match(/gc_session=([^;]+)/)?.[1] || null;
-  const statsP   = playerId
+  const msStatsP = playerId
     ? fetch('/api/sp/stats/minesweeper').then(r => r.ok ? r.json() : null).catch(() => null)
     : Promise.resolve(null);
+  const snakeSavesP = playerId
+    ? fetch('/api/sp/saves/snake').then(r => r.ok ? r.json() : []).catch(() => [])
+    : Promise.resolve([]);
 
   // Check if guest (to show progress warning)
   const statsApiP = fetch('/api/me/stats').then(r => r.json()).catch(() => null);
 
-  Promise.all([statsP, statsApiP]).then(([spStats, meStats]) => {
+  Promise.all([msStatsP, snakeSavesP, statsApiP]).then(([msStats, snakeSaves, meStats]) => {
+    const snakeStats = (() => {
+      const hs = snakeSaves.find(s => s.slot === 'highscore');
+      return hs?.data?.highScore != null ? { highScore: hs.data.highScore } : null;
+    })();
     const isGuest = meStats?.isGuest === true;
     grid.innerHTML = '';
 
     const games = [
+      {
+        id:     'snake',
+        name:   'Snake',
+        icon:   '🐍',
+        desc:   'Classic snake — how long can you grow?',
+        accent: '#39ff14',
+        stats:  snakeStats,
+        formatStats: (s) => s?.highScore != null ? `<span>best <span style="color:var(--gc-gold,#f0c040)">${s.highScore}</span></span>` : '',
+      },
       {
         id:     'minesweeper',
         name:   'Minesweeper',
         icon:   '💣',
         desc:   'Classic sweeper + Endless mode. Phosphor-green terminal aesthetic.',
         accent: '#39ff14',
-        stats:  spStats,
+        stats:  msStats,
       },
     ];
 
@@ -135,13 +151,17 @@ export function renderSingleplayer(container, socket, state, navigate) {
 
       let statsHtml = '';
       if (g.stats) {
-        const best = g.stats.bestTime != null ? `<span>best <span style="color:var(--gc-gold,#f0c040)">${formatTime(g.stats.bestTime)}</span></span>` : '';
-        statsHtml = `
-          <div style="display:flex;gap:10px;font-family:var(--gc-mono,'DM Mono',monospace);font-size:0.65rem;color:var(--gc-muted,rgba(240,240,248,0.4));flex-wrap:wrap">
-            <span><span style="color:var(--gc-text,#f0f0f8)">${g.stats.totalGames}</span> played</span>
-            <span><span style="color:var(--gc-green,#30d890)">${g.stats.wins}</span> wins</span>
-            ${best}
-          </div>`;
+        if (g.formatStats) {
+          statsHtml = `<div style="font-family:var(--gc-mono,'DM Mono',monospace);font-size:0.65rem;color:var(--gc-muted,rgba(240,240,248,0.4))">${g.formatStats(g.stats)}</div>`;
+        } else {
+          const best = g.stats.bestTime != null ? `<span>best <span style="color:var(--gc-gold,#f0c040)">${formatTime(g.stats.bestTime)}</span></span>` : '';
+          statsHtml = `
+            <div style="display:flex;gap:10px;font-family:var(--gc-mono,'DM Mono',monospace);font-size:0.65rem;color:var(--gc-muted,rgba(240,240,248,0.4));flex-wrap:wrap">
+              <span><span style="color:var(--gc-text,#f0f0f8)">${g.stats.totalGames}</span> played</span>
+              <span><span style="color:var(--gc-green,#30d890)">${g.stats.wins}</span> wins</span>
+              ${best}
+            </div>`;
+        }
       } else {
         statsHtml = '<div style="font-family:var(--gc-mono,monospace);font-size:0.65rem;color:var(--gc-muted,rgba(240,240,248,0.4))">No games yet</div>';
       }
