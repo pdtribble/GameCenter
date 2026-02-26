@@ -181,7 +181,8 @@ module.exports = {
   getSetupConfig() {
     return [
       { key: 'buyIn', type: 'number', label: 'Starting chips', default: 100, min: 10, max: 10000, step: 10 },
-      { key: 'minBet', type: 'number', label: 'Min bet per round', default: 10, min: 1, max: 500, step: 1 },
+      { key: 'minBet', type: 'number', label: 'Min bet', default: 10, min: 1, max: 500, step: 1 },
+      { key: 'maxBet', type: 'number', label: 'Max bet', default: 500, min: 10, max: 5000, step: 10 },
       { key: 'cardTheme', type: 'select', label: 'Card deck', options: ['classic', 'modern', 'neon', 'gold'], default: 'classic' },
     ];
   },
@@ -189,6 +190,7 @@ module.exports = {
   initGame(players, config) {
     const buyIn = Math.max(0, parseInt(config.buyIn, 10) || 100);
     const minBet = Math.max(1, parseInt(config.minBet, 10) || 10);
+    const maxBet = Math.max(minBet, parseInt(config.maxBet, 10) || 500);
     const cardTheme = config.cardTheme || 'classic';
     const s = {
       round: 1,
@@ -197,7 +199,9 @@ module.exports = {
       dealerHand: [],
       players: players.map(p => playerEntry(p, buyIn, 0, [], 'playing', null)),
       currentPlayerId: null,
-      config: { buyIn, minBet, cardTheme },
+      config: { buyIn, minBet, maxBet, cardTheme },
+      minBet,
+      maxBet,
       card_theme: cardTheme,
     };
     return dealRound(s, players);
@@ -216,6 +220,14 @@ module.exports = {
     const s = clone(state);
     const p = s.players.find(pl => pl.id === playerId);
     if (!p) return { state, error: 'Player not in game.' };
+    
+    // Reload chips action
+    if (action.type === 'reload_chips') {
+      if (p.chips > 0) return { state, error: 'You still have chips.' };
+      p.chips = 500; // One-time reload
+      return { state: s };
+    }
+
     if (s.phase !== 'playing') return { state, error: 'Not your turn to act.' };
     if (s.currentPlayerId !== playerId) return { state, error: 'Not your turn.' };
     if (p.status !== 'playing') return { state, error: 'You have already acted.' };

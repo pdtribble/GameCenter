@@ -309,15 +309,25 @@ function reorderPlayers(players, pid) {
   return players.slice(myIdx).concat(players.slice(0, myIdx));
 }
 
-function getArcPosition(opponentIdx, totalOpponents, tableW, tableH) {
-  const arcStart = 200, arcEnd = 340;
-  const deg = totalOpponents === 1
-    ? 270
-    : arcStart + (arcEnd - arcStart) * opponentIdx / (totalOpponents - 1);
+// Hardcoded degree values per player count — bottom arc only (210-330)
+const ARC_DEGS = {
+  1: [270],
+  2: [240, 300],
+  3: [210, 270, 330],
+  4: [210, 250, 290, 330],
+  5: [210, 240, 270, 300, 330],
+  6: [210, 230, 255, 285, 310, 330],
+};
+
+function getArcPosition(playerIdx, totalPlayers, tableW, tableH) {
+  const degs = ARC_DEGS[totalPlayers] || ARC_DEGS[1];
+  const deg = degs[Math.min(playerIdx, degs.length - 1)] || 270;
   const rad = deg * Math.PI / 180;
+  const rx = tableW * 0.36;
+  const ry = tableH * 0.30;
   return {
-    x: tableW / 2 + tableW * 0.38 * Math.cos(rad),
-    y: tableH / 2 + tableH * 0.32 * Math.sin(rad),
+    x: tableW / 2 + rx * Math.cos(rad),
+    y: tableH / 2 + ry * Math.sin(rad),
   };
 }
 
@@ -354,6 +364,11 @@ function buildDOM(container, state) {
   joinPill.style.cssText = 'background:rgba(0,0,0,0.7);border:1px solid rgba(212,175,55,0.5);border-radius:20px;padding:4px 12px;color:#d4af37;font-size:clamp(10px,1.2vw,13px);cursor:pointer;user-select:none;';
   joinPill.textContent = 'Code: ----';
 
+  const chipPill = document.createElement('div');
+  chipPill.id = 'bj-chip-pill';
+  chipPill.style.cssText = 'background:rgba(0,0,0,0.6);border:1px solid rgba(212,175,55,0.3);border-radius:20px;padding:4px 12px;color:#d4af37;font-size:clamp(10px,1.2vw,13px);cursor:pointer;user-select:none;';
+  chipPill.textContent = '🪙 --';
+
   const roundLabel = document.createElement('div');
   roundLabel.id = 'bj-round-label';
   roundLabel.style.cssText = 'color:rgba(255,255,255,0.6);font-size:clamp(10px,1.2vw,13px);';
@@ -365,6 +380,7 @@ function buildDOM(container, state) {
   muteBtn.textContent = localStorage.getItem('gc_mute') === '1' ? '\uD83D\uDD07' : '\uD83D\uDD0A';
 
   hud.appendChild(joinPill);
+  hud.appendChild(chipPill);
   hud.appendChild(roundLabel);
   hud.appendChild(muteBtn);
   container.appendChild(hud);
@@ -393,27 +409,16 @@ function buildDOM(container, state) {
   tableText.appendChild(t1); tableText.appendChild(t2); tableText.appendChild(insLine);
   table.appendChild(tableText);
 
-  // Deck shoe
-  const shoe = document.createElement('div');
-  shoe.style.cssText = 'position:absolute;top:8%;right:6%;width:clamp(28px,4vw,45px);height:clamp(38px,5.5vw,60px);background:#1a1a3a;border:1px solid rgba(212,175,55,0.3);border-radius:4px;display:flex;align-items:center;justify-content:center;color:rgba(212,175,55,0.4);font-size:clamp(6px,0.8vw,9px);letter-spacing:1px;z-index:2;';
-  shoe.textContent = 'SHOE';
-  table.appendChild(shoe);
-
-  // Discard tray
-  const discard = document.createElement('div');
-  discard.style.cssText = 'position:absolute;top:8%;left:6%;width:clamp(28px,4vw,45px);height:clamp(38px,5.5vw,60px);background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);border-radius:4px;z-index:2;';
-  table.appendChild(discard);
-
   // Dealer area (top center, hardcoded)
   const dealerArea = document.createElement('div');
   dealerArea.id = 'bj-dealer-area';
-  dealerArea.style.cssText = 'position:absolute;top:6%;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:6px;z-index:10;';
+  dealerArea.style.cssText = 'position:absolute;top:5%;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;z-index:10;';
   const dealerLabel = document.createElement('div');
-  dealerLabel.style.cssText = 'color:rgba(255,255,255,0.45);letter-spacing:3px;font-size:clamp(8px,1.1vw,12px);font-weight:bold;';
-  dealerLabel.textContent = 'DEALER';
+  dealerLabel.style.cssText = 'color:rgba(212,175,55,0.6);letter-spacing:3px;font-size:clamp(7px,0.9vw,10px);font-weight:bold;text-transform:uppercase;';
+  dealerLabel.textContent = 'Dealer';
   const dealerHand = document.createElement('div');
   dealerHand.id = 'bj-dealer-hand';
-  dealerHand.style.cssText = 'display:flex;position:relative;height:clamp(80px,10.5vw,116px);min-width:clamp(58px,8vw,84px);';
+  dealerHand.style.cssText = 'display:flex;position:relative;height:clamp(70px,9vw,100px);min-width:clamp(50px,7vw,75px);';
   const dealerTotal = document.createElement('div');
   dealerTotal.id = 'bj-dealer-total';
   dealerTotal.style.cssText = 'display:none;background:rgba(0,0,0,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:10px;padding:2px 8px;color:white;font-size:clamp(9px,1.1vw,12px);font-weight:bold;';
@@ -466,6 +471,14 @@ function wireEvents() {
       setTimeout(function() { joinPill.textContent = orig; }, 2000);
     });
   }
+  const chipPill = document.getElementById('bj-chip-pill');
+  if (chipPill) {
+    chipPill.addEventListener('click', function() {
+      if (chipPill.textContent.includes('Reload')) {
+        socketRef.emit('game:action', { sessionId: socketRef.currentSessionId, action: { type: 'reload_chips' } });
+      }
+    });
+  }
   const muteBtn = document.getElementById('bj-mute-btn');
   if (muteBtn) {
     muteBtn.addEventListener('click', function() {
@@ -515,50 +528,52 @@ function buildSeats(state) {
   if (!seatsContainer || !table) return;
   seatsContainer.innerHTML = '';
 
-  seatOrder = reorderPlayers(state.players || [], myPlayerId);
+  // Reorder so myPlayerId is at index 0, then position them on the arc
+  const players = state.players || [];
+  const myIdx = players.findIndex(p => p.id === myPlayerId);
+  let ordered = players.slice();
+  if (myIdx > 0) {
+    ordered = players.slice(myIdx).concat(players.slice(0, myIdx));
+  }
+  seatOrder = ordered;
+  
   const tw = table.offsetWidth, th = table.offsetHeight;
-  const opponents = seatOrder.slice(1);
+  const totalPlayers = ordered.length;
 
-  seatOrder.forEach(function(player, i) {
+  ordered.forEach(function(player, i) {
     const isLocal = i === 0;
     const isActive = state.currentPlayerId === player.id && !player.result;
 
     const seat = document.createElement('div');
-    seat.className = 'bj-seat' + (isActive ? ' bj-active' : '');
+    seat.className = 'bj-seat';
     seat.dataset.playerId = player.id;
 
-    if (isLocal) {
-      // Pinned to bottom center — override arc
-      seat.style.cssText = 'position:absolute;left:50%;bottom:10px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:3px;pointer-events:auto;z-index:20;min-width:80px;';
-    } else {
-      const pos = getArcPosition(i - 1, opponents.length, tw, th);
-      seat.style.cssText = 'position:absolute;left:' + pos.x + 'px;top:' + pos.y + 'px;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:3px;pointer-events:auto;z-index:20;min-width:80px;';
-    }
+    // Position on bottom arc - local player always at index 0 (270 deg)
+    const pos = getArcPosition(i, totalPlayers, tw, th);
+    seat.style.cssText = 'position:absolute;left:' + pos.x + 'px;top:' + pos.y + 'px;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;pointer-events:auto;z-index:20;';
 
-    // YOU indicator (local only)
-    if (isLocal) {
-      const youLabel = document.createElement('div');
-      youLabel.style.cssText = 'color:#d4af37;background:rgba(212,175,55,0.15);border:1px solid rgba(212,175,55,0.5);border-radius:20px;padding:2px 8px;font-size:clamp(8px,1vw,11px);font-weight:bold;';
-      youLabel.textContent = '\u25B6 YOU \u25C0';
-      seat.appendChild(youLabel);
+    // Active turn glow on the felt (behind cards)
+    if (isActive) {
+      const glow = document.createElement('div');
+      glow.style.cssText = 'position:absolute;width:120%;height:120%;top:-10%;left:-10%;background:radial-gradient(ellipse,rgba(212,175,55,0.12) 0%,transparent 70%);pointer-events:none;z-index:0;';
+      seat.appendChild(glow);
     }
 
     // Name pill
     const displayName = player.is_bot
-      ? ('\uD83E\uDD16 ' + (player.displayName || player.display_name || 'Bot'))
+      ? ('Bot ' + (player.displayName || player.display_name || '').replace(/^Bot\s*/i, ''))
       : (player.displayName || player.display_name || 'Player');
     const namePill = document.createElement('div');
     namePill.className = 'bj-name-pill';
-    namePill.style.cssText = 'background:rgba(0,0,0,0.75);border:1px solid ' + (isLocal ? 'rgba(212,175,55,0.5)' : 'rgba(255,255,255,0.2)') + ';border-radius:20px;padding:3px 10px;color:' + (isLocal ? '#d4af37' : 'white') + ';font-size:clamp(9px,1.1vw,12px);white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis;';
-    namePill.textContent = displayName;
+    namePill.style.cssText = 'background:rgba(0,0,0,0.65);border:1px solid ' + (isLocal ? 'rgba(212,175,55,0.4)' : 'rgba(255,255,255,0.15)') + ';border-radius:20px;padding:3px 10px;color:' + (isLocal ? '#d4af37' : 'white') + ';font-size:clamp(9px,1.1vw,12px);white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis;z-index:5;';
+    namePill.textContent = isLocal ? 'You' : displayName;
 
-    // Hand container
+    // Hand container - cards float directly on felt
     const handContainer = document.createElement('div');
     handContainer.className = 'bj-seat-hand';
     const cardH = isLocal ? 'clamp(80px,10.5vw,116px)' : 'clamp(51px,6.5vw,79px)';
     const minW = isLocal ? 'clamp(58px,8vw,84px)' : 'clamp(35px,4.5vw,55px)';
-    handContainer.style.cssText = 'display:flex;position:relative;height:' + cardH + ';min-width:' + minW + ';';
-    // Opponents' hands face away (rotated 180°)
+    handContainer.style.cssText = 'display:flex;position:relative;height:' + cardH + ';min-width:' + minW + ';z-index:3;';
     if (!isLocal) handContainer.style.transform = 'rotate(180deg)';
 
     const offset = isLocal ? 'clamp(22px,3vw,32px)' : 'clamp(12px,1.6vw,18px)';
@@ -571,37 +586,30 @@ function buildSeats(state) {
       handContainer.appendChild(cardEl);
     });
 
-    // Score total
+    // Score total badge
     const totalEl = document.createElement('div');
     totalEl.className = 'bj-seat-total';
     const v = handValue(player.hand || []);
     if (v > 0) {
       const soft = isSoft(player.hand || []);
       totalEl.textContent = v > 21 ? String(v) : (soft ? 'soft ' + v : String(v));
-      totalEl.style.cssText = 'background:rgba(0,0,0,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:10px;padding:2px 8px;color:' + (v > 21 ? '#ff8888' : 'white') + ';font-size:clamp(9px,1.1vw,12px);font-weight:bold;';
+      totalEl.style.cssText = 'background:rgba(0,0,0,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:10px;padding:2px 8px;color:' + (v > 21 ? '#ff8888' : 'white') + ';font-size:clamp(9px,1.1vw,12px);font-weight:bold;z-index:4;';
     } else {
       totalEl.style.display = 'none';
     }
 
-    // Chip info row
+    // Chip info row - plain text below name
     const infoRow = document.createElement('div');
     infoRow.className = 'bj-seat-info';
-    const betStr = (player.bet || 0) > 0 ? '  \u00B7  Bet: ' + player.bet : '';
-    infoRow.textContent = '\uD83E\uDE99 ' + (player.chips != null ? player.chips : 0) + betStr;
-    infoRow.style.cssText = 'display:flex;gap:6px;align-items:center;font-size:clamp(8px,1vw,11px);color:rgba(255,255,255,0.75);white-space:nowrap;';
+    const betStr = (player.bet || 0) > 0 ? ' · Bet: ' + player.bet : '';
+    infoRow.textContent = '🪙 ' + (player.chips != null ? player.chips : 0) + betStr;
+    infoRow.style.cssText = 'font-size:clamp(9px,1.1vw,12px);color:rgba(255,255,255,0.7);white-space:nowrap;z-index:5;';
 
-    // Stack order: local = [hand, total, name, chips]; opponent = [name, hand, total, chips]
-    if (isLocal) {
-      seat.appendChild(handContainer);
-      seat.appendChild(totalEl);
-      seat.appendChild(namePill);
-      seat.appendChild(infoRow);
-    } else {
-      seat.appendChild(namePill);
-      seat.appendChild(handContainer);
-      seat.appendChild(totalEl);
-      seat.appendChild(infoRow);
-    }
+    // Stack: name above hand, chips below
+    seat.appendChild(namePill);
+    seat.appendChild(handContainer);
+    seat.appendChild(totalEl);
+    seat.appendChild(infoRow);
 
     seatsContainer.appendChild(seat);
   });
@@ -820,6 +828,22 @@ function updateScoreboard(state) {
 function updateHUD(state) {
   const roundLabel = document.getElementById('bj-round-label');
   if (roundLabel) roundLabel.textContent = 'Round ' + (state.round || 1);
+  
+  // Update chip display
+  const chipPill = document.getElementById('bj-chip-pill');
+  if (chipPill && state.players) {
+    const me = state.players.find(p => p.id === myPlayerId);
+    const chips = me?.chips != null ? me.chips : '--';
+    if (chips === 0) {
+      chipPill.textContent = '🪙 0 — Reload?';
+      chipPill.style.color = '#ff4444';
+      chipPill.style.borderColor = 'rgba(255,68,68,0.5)';
+    } else {
+      chipPill.textContent = '🪙 ' + chips;
+      chipPill.style.color = '#d4af37';
+      chipPill.style.borderColor = 'rgba(212,175,55,0.3)';
+    }
+  }
 }
 
 // ── Chip tray ─────────────────────────────────────────────────────────────────
@@ -836,16 +860,89 @@ function showChipTray(state) {
   const tray = document.getElementById('bj-chip-tray');
   if (!tray) return;
   betAmount = 0; betChips = [];
-  tray.innerHTML =
-    '<div id="bj-tray-chips" style="display:flex;gap:8px;flex-wrap:wrap;">' +
+  
+  const minBet = state.minBet || 10;
+  const maxBet = state.maxBet || 500;
+  const playerChips = (state.players || []).find(p => p.id === myPlayerId)?.chips || 0;
+  
+  tray.innerHTML = 
+    '<div id="bj-bet-adjuster" style="display:flex;align-items:center;gap:10px;width:100%;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.1);margin-bottom:8px;">' +
+      '<button id="bj-bet-dec" style="width:36px;height:36px;border-radius:50%;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);color:white;font-size:18px;cursor:pointer;">−</button>' +
+      '<div id="bj-bet-amount" style="flex:1;text-align:center;font-size:clamp(18px,2.5vw,26px);font-weight:bold;color:#d4af37;min-width:80px;">' + minBet + '</div>' +
+      '<button id="bj-bet-inc" style="width:36px;height:36px;border-radius:50%;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);color:white;font-size:18px;cursor:pointer;">+</button>' +
+    '</div>' +
+    '<div id="bj-quick-bets" style="display:flex;gap:6px;margin-bottom:10px;width:100%;">' +
+      '<button class="bj-quick-btn" data-quick="min" style="flex:1;padding:6px;border-radius:4px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:white;font-size:clamp(10px,1.2vw,12px);cursor:pointer;">MIN</button>' +
+      '<button class="bj-quick-btn" data-quick="half" style="flex:1;padding:6px;border-radius:4px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:white;font-size:clamp(10px,1.2vw,12px);cursor:pointer;">½</button>' +
+      '<button class="bj-quick-btn" data-quick="double" style="flex:1;padding:6px;border-radius:4px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:white;font-size:clamp(10px,1.2vw,12px);cursor:pointer;">2×</button>' +
+      '<button class="bj-quick-btn" data-quick="max" style="flex:1;padding:6px;border-radius:4px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:white;font-size:clamp(10px,1.2vw,12px);cursor:pointer;">MAX</button>' +
+      '<button class="bj-quick-btn" data-quick="all" style="flex:1;padding:6px;border-radius:4px;border:1px solid rgba(248,81,73,0.4);background:rgba(248,81,73,0.15);color:#ff6b6b;font-size:clamp(10px,1.2vw,12px);cursor:pointer;">ALL IN</button>' +
+    '</div>' +
+    '<div id="bj-tray-chips" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">' +
     CHIP_DENOMS.map(function(d) {
-      return '<div class="bj-chip" data-chip-value="' + d.value + '" style="width:clamp(38px,5.2vw,50px);height:clamp(38px,5.2vw,50px);border-radius:50%;background:' + d.bg + ';border:3px solid ' + d.border + ';color:' + d.color + ';display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:clamp(9px,1.2vw,13px);cursor:pointer;user-select:none;transition:transform 0.1s ease;box-shadow:0 0 0 2px rgba(255,255,255,0.15),0 4px 8px rgba(0,0,0,0.5);">' + (d.value >= 1000 ? '1K' : d.value) + '</div>';
+      const canAfford = d.value <= playerChips;
+      return '<div class="bj-chip" data-chip-value="' + d.value + '" style="width:clamp(38px,5.2vw,50px);height:clamp(38px,5.2vw,50px);border-radius:50%;background:' + d.bg + ';border:3px solid ' + d.border + ';color:' + d.color + ';display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:clamp(9px,1.2vw,13px);cursor:pointer;user-select:none;transition:transform 0.1s ease;box-shadow:0 0 0 2px rgba(255,255,255,0.15),0 4px 8px rgba(0,0,0,0.5);' + (canAfford ? '' : 'opacity:0.4;') + '">' + (d.value >= 1000 ? '1K' : d.value) + '</div>';
     }).join('') +
     '</div>' +
     '<div id="bj-tray-betstack" style="display:flex;align-items:center;gap:6px;flex:1;min-width:120px;color:#d4af37;font-weight:bold;">No bet</div>' +
     '<button id="bj-clear-bet" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:6px 14px;color:white;cursor:pointer;font-family:inherit;">Clear</button>' +
     '<button id="bj-bet-btn" disabled style="background:linear-gradient(135deg,#d4af37,#a07820);color:#1a1a00;font-weight:bold;border:none;border-radius:8px;padding:8px 22px;cursor:pointer;font-family:inherit;font-size:clamp(12px,1.4vw,15px);letter-spacing:1px;">BET</button>';
   tray.classList.remove('bj-hidden');
+  
+  // Wire up bet adjusters
+  const betDec = document.getElementById('bj-bet-dec');
+  const betInc = document.getElementById('bj-bet-inc');
+  const betDisplay = document.getElementById('bj-bet-amount');
+  
+  if (betDec) {
+    betDec.addEventListener('click', function() {
+      betAmount = Math.max(minBet, betAmount - minBet);
+      betDisplay.textContent = betAmount;
+      updateChipTrayDisplay();
+    });
+  }
+  if (betInc) {
+    const longPress = { timer: null, interval: null };
+    const doInc = function() {
+      const max = Math.min(maxBet, playerChips);
+      betAmount = Math.min(max, betAmount + minBet);
+      betDisplay.textContent = betAmount;
+      updateChipTrayDisplay();
+    };
+    betInc.addEventListener('mousedown', function() {
+      longPress.timer = setTimeout(function() {
+        longPress.interval = setInterval(doInc, 80);
+      }, 400);
+    });
+    betInc.addEventListener('mouseup', function() {
+      clearTimeout(longPress.timer);
+      clearInterval(longPress.interval);
+    });
+    betInc.addEventListener('mouseleave', function() {
+      clearTimeout(longPress.timer);
+      clearInterval(longPress.interval);
+    });
+    betInc.addEventListener('click', doInc);
+  }
+  
+  // Quick bet buttons
+  tray.querySelectorAll('.bj-quick-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      const quick = btn.dataset.quick;
+      const max = Math.min(maxBet, playerChips);
+      switch(quick) {
+        case 'min': betAmount = minBet; break;
+        case 'half': betAmount = Math.floor(playerChips / 2); break;
+        case 'double': betAmount = Math.min(max, betAmount * 2); break;
+        case 'max': betAmount = max; break;
+        case 'all': betAmount = playerChips; break;
+      }
+      betAmount = Math.max(minBet, Math.min(maxBet, betAmount));
+      betDisplay.textContent = betAmount;
+      updateChipTrayDisplay();
+    });
+  });
+  
   if (timerInterval) clearInterval(timerInterval);
 }
 
