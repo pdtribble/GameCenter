@@ -78,11 +78,12 @@ export function renderLobby(container, socket, state, navigate) {
       const isHost = p.id === state.lobby?.host_player_id;
       const isMe = p.id === state.myPlayerId;
       const avatarBg = p.avatar_color || '#6366f1';
+      const chips = p.chips != null ? p.chips : 0;
       return `<div class="gc-lobby-player-item">
         <div class="gc-lobby-player-avatar" style="background:${escHtml(avatarBg)}">${escHtml(p.avatar_emoji || '🎮')}</div>
         <div class="gc-lobby-player-info">
           <div class="gc-lobby-player-name">${escHtml(p.display_name)}${isHost ? ' 👑' : ''}${isMe ? ' (you)' : ''}</div>
-          <div class="gc-lobby-player-meta">${p.role === 'spectator' ? '👁 Spectator' : (p.is_bot ? '🤖 Bot' : '👤 Player')}</div>
+          <div class="gc-lobby-player-meta">${p.role === 'spectator' ? '👁 Spectator' : (p.is_bot ? '🤖 Bot' : '👤 Player')}${p.role !== 'spectator' ? ` · 🪙${chips}` : ''}</div>
         </div>
         <div class="gc-lobby-ready-dot${p.is_ready ? ' is-ready' : ''}" title="${p.is_ready ? 'Ready' : 'Not ready'}"></div>
         ${amIHost && !isMe && !p.is_bot && p.role !== 'spectator' ? `<button class="gc-lobby-transfer-btn" data-transfer="${escHtml(p.id)}" title="Transfer host" style="background:none;border:1px solid rgba(255,255,255,0.1);color:rgba(240,240,248,0.4);border-radius:5px;padding:2px 7px;cursor:pointer;font-size:0.75rem;margin-right:2px">👑</button>` : ''}

@@ -25,6 +25,17 @@ export function renderProfile(container, socket, state, navigate) {
               <div id="prof-username-row"  style="color:var(--gc-muted);font-family:var(--gc-mono);font-size:0.68rem;margin-top:3px"></div>
               <div id="prof-since-row"     style="color:rgba(240,240,248,0.2);font-family:var(--gc-mono);font-size:0.62rem;margin-top:2px"></div>
             </div>
+            <div id="prof-chips" style="
+              background:rgba(240,192,64,0.15);
+              border:1px solid rgba(240,192,64,0.3);
+              border-radius:20px;
+              padding:4px 12px;
+              color:var(--gc-gold);
+              font-family:var(--gc-mono);
+              font-size:0.8rem;
+              font-weight:700;
+              display:none;
+            ">🪙 <span id="prof-chips-val">0</span></div>
           </div>
 
           <!-- Multiplayer stats -->
@@ -246,19 +257,27 @@ function renderPlayerCard(container, stats, me) {
   const nameEl   = container.querySelector('#prof-display-name');
   const userEl   = container.querySelector('#prof-username-row');
   const sinceEl  = container.querySelector('#prof-since-row');
+  const chipsEl  = container.querySelector('#prof-chips');
+  const chipsValEl = container.querySelector('#prof-chips-val');
 
   if (!stats?.loggedIn) {
     if (nameEl)   nameEl.textContent  = 'Guest';
     if (userEl)   userEl.textContent  = 'Not logged in';
     if (sinceEl)  sinceEl.textContent = '';
+    if (chipsEl)  chipsEl.style.display = 'none';
     return;
   }
 
   const name  = stats.displayName || 'Player';
   const color = stats.avatarColor || '#6366f1';
+  const chips = stats.chips ?? 0;
   if (avatarEl) { avatarEl.textContent = name.charAt(0).toUpperCase(); avatarEl.style.background = color; }
   if (nameEl)   nameEl.textContent = name;
   if (me?.username && userEl) userEl.textContent = `@${me.username}`;
+  if (chipsEl) {
+    chipsValEl.textContent = chips.toLocaleString();
+    chipsEl.style.display = 'inline-flex';
+  }
   if (me?.created_at && sinceEl) {
     const d = new Date(me.created_at);
     if (!isNaN(d)) sinceEl.textContent = `Member since ${d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`;

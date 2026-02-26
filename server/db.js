@@ -22,10 +22,20 @@ function migrate() {
       is_bot INTEGER DEFAULT 0,
       is_guest INTEGER DEFAULT 0,
       privacy_public INTEGER DEFAULT 1,
+      chips INTEGER DEFAULT 1000,
       created_at TEXT DEFAULT (datetime('now')),
       last_seen TEXT
     );
+  `);
 
+  // Add chips column if it doesn't exist (for existing databases)
+  try {
+    db.exec("ALTER TABLE players ADD COLUMN chips INTEGER DEFAULT 1000");
+  } catch (e) {
+    // Column already exists, ignore
+  }
+
+  db.exec(`
     CREATE TABLE IF NOT EXISTS groups_table (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,

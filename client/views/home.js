@@ -8,14 +8,6 @@ const GAME_ACCENTS = {
   'bs':           '#ff4560',
 };
 
-// ── Card deck themes ──────────────────────────────────────────────────────────
-const CARD_DECKS = [
-  { id: 'classic', name: 'Classic', accent: '#1a5c2a' },
-  { id: 'modern', name: 'Modern', accent: '#2d3748' },
-  { id: 'neon', name: 'Neon', accent: '#8b5cf6' },
-  { id: 'gold', name: 'Gold', accent: '#d4af37' },
-];
-
 // ── Game descriptions / icon overrides ───────────────────────────────────────
 const GAME_DESCS = {
   'blackjack': { desc: 'Classic casino card game', icon: '🃏' },
@@ -531,10 +523,6 @@ export function renderHome(container, socket, state, navigate) {
             <label class="gc-label">Game</label>
             <select class="gc-input gc-select" id="cm-game">${gameOptions}</select>
           </div>
-          <div id="cm-deck-section" style="display:none">
-            <label class="gc-label">Card Deck</label>
-            <div class="cm-deck-scroll" id="cm-deck-scroll"></div>
-          </div>
           <div id="cm-bot-info" class="gc-section-label" style="display:none;font-size:0.67rem;padding:6px 0"></div>
           <div id="cm-settings"></div>
         </div>
@@ -549,34 +537,6 @@ export function renderHome(container, socket, state, navigate) {
     const cmSettings = backdrop.querySelector('#cm-settings');
     const cmBotInfo  = backdrop.querySelector('#cm-bot-info');
     const cmError    = backdrop.querySelector('#cm-error');
-    const cmDeckSection = backdrop.querySelector('#cm-deck-section');
-    const cmDeckScroll = backdrop.querySelector('#cm-deck-scroll');
-    let selectedDeck = 'classic';
-
-    // Card games that support deck selection
-    const CARD_GAMES = ['blackjack', 'poker', 'bs'];
-
-    function renderDeckSelector() {
-      const gt = cmGame.value;
-      if (CARD_GAMES.includes(gt)) {
-        cmDeckSection.style.display = 'block';
-        cmDeckScroll.innerHTML = CARD_DECKS.map(deck => `
-          <div class="cm-deck-item${deck.id === selectedDeck ? ' selected' : ''}" data-deck="${deck.id}">
-            <div class="cm-deck-preview" style="background:${deck.accent}">🃏</div>
-            <div class="cm-deck-name">${deck.name}</div>
-          </div>
-        `).join('');
-        cmDeckScroll.querySelectorAll('.cm-deck-item').forEach(item => {
-          item.addEventListener('click', () => {
-            cmDeckScroll.querySelectorAll('.cm-deck-item').forEach(d => d.classList.remove('selected'));
-            item.classList.add('selected');
-            selectedDeck = item.dataset.deck;
-          });
-        });
-      } else {
-        cmDeckSection.style.display = 'none';
-      }
-    }
 
     function updateCmSettings() {
       const gt  = cmGame.value;
@@ -617,8 +577,7 @@ export function renderHome(container, socket, state, navigate) {
     }
 
     if (gamesList.length) updateCmSettings();
-    cmGame.addEventListener('change', () => { updateCmSettings(); renderDeckSelector(); });
-    renderDeckSelector();
+    cmGame.addEventListener('change', () => { updateCmSettings(); });
 
     // ESC closes modal — self-removing listener
     let modalEsc = null;
@@ -633,19 +592,16 @@ export function renderHome(container, socket, state, navigate) {
     backdrop.addEventListener('click', e => { if (e.target === backdrop) closeCreateModal(); });
 
     backdrop.querySelector('#cm-submit').addEventListener('click', () => {
-      const gt       = cmGame.value;
-      const nickname = backdrop.querySelector('#cm-nickname').value.trim() || playerDisplayName || 'Player';
+      const gt         = cmGame.value;
+      const nickname   = backdrop.querySelector('#cm-nickname').value.trim() || playerDisplayName || 'Player';
+      const lobbyName  = backdrop.querySelector('#cm-lobby-name').value.trim() || defaultLobName || 'My Lobby';
       if (!gt) { showModalError(cmError, 'Please select a game.'); return; }
       cmError.style.display = 'none';
       const settings = collectSettings(backdrop, gt);
-      // Add card deck for card games
-      const CARD_GAMES = ['blackjack', 'poker', 'bs'];
-      if (CARD_GAMES.includes(gt)) {
-        settings.card_theme = selectedDeck;
-      }
       socket.emit('lobby:create', {
         gameType:   gt,
         playerName: nickname,
+        lobbyName:  lobbyName,
         pin:        '',
         settings:   settings,
       });

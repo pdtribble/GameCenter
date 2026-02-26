@@ -44,7 +44,7 @@ function getLobby(lobbyId) {
 
 function getLobbyPlayers(lobbyId) {
   return db.prepare(`
-    SELECT p.id, p.display_name, p.avatar_emoji, p.avatar_color, p.is_bot, p.is_guest,
+    SELECT p.id, p.display_name, p.avatar_emoji, p.avatar_color, p.is_bot, p.is_guest, p.chips,
            lp.role, lp.is_ready, lp.joined_at
     FROM lobby_players lp
     JOIN players p ON lp.player_id = p.id
@@ -79,7 +79,7 @@ function abandonLobby(lobbyId) {
 
 // ── lobby:create ──────────────────────────────────────────────────────────────
 function handleCreate(socket, io, data) {
-  const { gameType, playerName, pin, settings } = data || {};
+  const { gameType, playerName, pin, settings, lobbyName } = data || {};
 
   const gameReg = db.prepare('SELECT * FROM game_registry WHERE game_type = ?').get(gameType);
   if (!gameReg) {
@@ -95,12 +95,13 @@ function handleCreate(socket, io, data) {
   const lobbyId = uuidv4();
   const joinCode = makeUniqueJoinCode();
   const safeSettings = JSON.stringify(typeof settings === 'object' && settings !== null ? settings : {});
+  const safeName = sanitize(lobbyName, 64) || 'My Lobby';
 
   db.transaction(() => {
     db.prepare(`
-      INSERT INTO lobbies (id, join_code, game_type, host_player_id, status, settings)
-      VALUES (?, ?, ?, ?, 'waiting', ?)
-    `).run(lobbyId, joinCode, gameType, player.id, safeSettings);
+      INSERT INTO lobbies (id, join_code, game_type, host_player_id, status, name, settings)
+      VALUES (?, ?, ?, ?, 'waiting', ?, ?)
+    `).run(lobbyId, joinCode, gameType, player.id, safeName, safeSettings);
 
     db.prepare(`
       INSERT INTO lobby_players (lobby_id, player_id, role, is_ready)

@@ -72,6 +72,19 @@ app.use('/', playerRouter);
 app.use('/join', joinRouter);
 app.use('/admin', rateLimitMiddleware.adminLimiter, adminRouter);
 
+// GET /api/chips — get player's chip balance
+app.get('/api/chips', (req, res) => {
+  const playerId = req.cookies?.gc_session;
+  if (!playerId) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+  const player = db.prepare('SELECT chips FROM players WHERE id = ?').get(playerId);
+  if (!player) {
+    return res.status(404).json({ error: 'Player not found' });
+  }
+  res.json({ chips: player.chips ?? 0 });
+});
+
 // ── First-run wizard ──────────────────────────────────────────────────────────
 app.get('/setup', (req, res) => {
   res.send(`<!DOCTYPE html>
