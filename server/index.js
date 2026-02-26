@@ -166,6 +166,11 @@ io.on('connection', (socket) => {
     catch (err) { handleSocketError(socket, 'lobby:join', err); }
   });
 
+  socket.on('lobby:leave', (data) => {
+    try { lobbyManager.handleLeave(socket, io, data); }
+    catch (err) { handleSocketError(socket, 'lobby:leave', err); }
+  });
+
   socket.on('lobby:ready', (data) => {
     try { lobbyManager.handleReady(socket, io, data); }
     catch (err) { handleSocketError(socket, 'lobby:ready', err); }

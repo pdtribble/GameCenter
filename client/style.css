@@ -1468,6 +1468,27 @@ body.gc-view .navbar .btn-secondary:hover { background: var(--gc-border); color:
   align-items: center;
   justify-content: space-between;
   margin-bottom: 16px;
+  gap: 10px;
+}
+
+.gc-lobby-back-btn {
+  font-family: var(--gc-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--gc-muted);
+  background: none;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.gc-lobby-back-btn:hover {
+  color: var(--gc-text);
+  border-color: rgba(255,255,255,0.25);
 }
 
 .gc-lobby-wait-title {

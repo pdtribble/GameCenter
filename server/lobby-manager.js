@@ -395,6 +395,35 @@ function handleSpectatorJoin(socket, io, data) {
   handleJoin(socket, io, { ...(data || {}), asSpectator: true });
 }
 
+// ── lobby:leave ───────────────────────────────────────────────────────────────
+function handleLeave(socket, io, data) {
+  const lobbyId = (data || {}).lobbyId || socket.currentLobbyId;
+  if (!lobbyId || !socket.playerId) return;
+
+  const lobby = getLobby(lobbyId);
+  if (!lobby || lobby.status !== 'waiting') return;
+
+  db.prepare('DELETE FROM lobby_players WHERE lobby_id = ? AND player_id = ?')
+    .run(lobbyId, socket.playerId);
+
+  socket.leave(`lobby:${lobbyId}`);
+  socket.currentLobbyId = null;
+
+  const remaining = getLobbyPlayers(lobbyId).filter(p => p.role !== 'spectator');
+
+  if (remaining.length === 0) {
+    abandonLobby(lobbyId);
+    return;
+  }
+
+  // Transfer host if the leaver was host
+  if (lobby.host_player_id === socket.playerId) {
+    performHostTransfer(io, lobbyId, remaining[0].id);
+  } else {
+    emitLobbyUpdate(io, lobbyId);
+  }
+}
+
 // ── disconnect ────────────────────────────────────────────────────────────────
 function handleDisconnect(socket, io) {
   const lobbyId = socket.currentLobbyId;
@@ -503,6 +532,7 @@ function getLobbyPlayersList(lobbyId) { return getLobbyPlayers(lobbyId); }
 module.exports = {
   handleCreate,
   handleJoin,
+  handleLeave,
   handleReady,
   handleUnready,
   handleStart,

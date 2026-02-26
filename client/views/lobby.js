@@ -9,6 +9,7 @@ export function renderLobby(container, socket, state, navigate) {
       <div class="gc-lobby-wait-inner">
         <div class="gc-lobby-wait-card">
           <div class="gc-lobby-wait-title-row">
+            <button class="gc-lobby-back-btn" id="btn-back">← Back</button>
             <h1 class="gc-lobby-wait-title" id="lobby-title">
               ${escHtml(lobby?.game_type || 'Game')} Lobby
             </h1>
@@ -108,6 +109,12 @@ export function renderLobby(container, socket, state, navigate) {
 
   // Chat
   chat = new ChatComponent(container.querySelector('#chat-mount'), socket, 'lobby', state.lobby?.id);
+
+  // Back button — leave lobby and return to home
+  container.querySelector('#btn-back').addEventListener('click', () => {
+    socket.emit('lobby:leave', { lobbyId: state.lobby?.id });
+    navigate('home');
+  });
 
   // Copy invite link
   container.querySelector('#btn-copy-link').addEventListener('click', () => {
