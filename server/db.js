@@ -168,8 +168,14 @@ function migrate() {
     INSERT OR IGNORE INTO game_registry (game_type, display_name, min_players, max_players)
     VALUES (?, ?, ?, ?)
   `);
-  seedGames.run('highest-card', 'Highest Card', 2, 6);
   seedGames.run('blackjack', 'Blackjack', 1, 6);
+
+  // Remove deprecated game types (idempotent DELETEs)
+  for (const gt of ['highest-card', 'game_night']) {
+    db.exec(`DELETE FROM lobby_players WHERE lobby_id IN (SELECT id FROM lobbies WHERE game_type = '${gt}')`);
+    db.exec(`DELETE FROM lobbies WHERE game_type = '${gt}'`);
+    db.exec(`DELETE FROM game_registry WHERE game_type = '${gt}'`);
+  }
 
   console.log('[db] Schema migration complete');
 }

@@ -209,6 +209,12 @@ function handleJoin(socket, io, data) {
     VALUES (?, ?, ?, 0)
   `).run(lobby.id, player.id, role);
 
+  // Auto-assign host if the lobby has no host (e.g. a default lobby)
+  if (!lobby.host_player_id && role !== 'spectator') {
+    db.prepare('UPDATE lobbies SET host_player_id = ? WHERE id = ?').run(player.id, lobby.id);
+    db.prepare("UPDATE lobby_players SET role = 'host', is_ready = 1 WHERE lobby_id = ? AND player_id = ?").run(lobby.id, player.id);
+  }
+
   socket.join(`lobby:${lobby.id}`);
   socket.currentLobbyId = lobby.id;
 

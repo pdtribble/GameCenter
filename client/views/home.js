@@ -3,7 +3,6 @@ import { setGuestMode } from '../app.js';
 
 // ── Accent colors per game type ───────────────────────────────────────────────
 const GAME_ACCENTS = {
-  'highest-card': '#9060ff',
   'blackjack':    '#30d890',
   'poker':        '#30d890',
   'bs':           '#ff4560',
@@ -11,10 +10,9 @@ const GAME_ACCENTS = {
 
 // ── Game descriptions / icon overrides ───────────────────────────────────────
 const GAME_DESCS = {
-  'blackjack':    { desc: 'Classic casino card game',     icon: '🃏' },
-  'highest-card': { desc: 'Simple card flip — pure luck', icon: '🎴' },
-  'poker':        { desc: "Texas Hold'em No-Limit",       icon: '♠️' },
-  'bs':           { desc: 'Bluffing card game',           icon: '🎭' },
+  'blackjack': { desc: 'Classic casino card game', icon: '🃏' },
+  'poker':     { desc: "Texas Hold'em No-Limit",   icon: '♠️' },
+  'bs':        { desc: 'Bluffing card game',        icon: '🎭' },
 };
 
 // ── Shared styles (injected once for both mp and sp views) ────────────────────
@@ -289,7 +287,7 @@ export function renderHome(container, socket, state, navigate) {
       card.style.setProperty('--mp-card-accent', accent);
       card.innerHTML = `
         <div class="mp-game-card-icon">${icon}</div>
-        <div class="mp-game-card-name">${escHtml(g.label)}</div>
+        <div class="mp-game-card-name">${escHtml(g.label.toUpperCase())}</div>
         <div class="mp-game-card-desc">${escHtml(desc)}</div>
         <div class="mp-game-card-badge" data-game="${escHtml(g.gameType)}"
              style="display:${count > 0 ? 'inline-block' : 'none'}">${count} open</div>`;
@@ -311,7 +309,7 @@ export function renderHome(container, socket, state, navigate) {
   function showLobbyPanel(gameType, gameLabel) {
     currentPanelGame  = gameType;
     currentPanelLabel = gameLabel || gameType;
-    panelTitle.textContent = currentPanelLabel;
+    panelTitle.textContent = currentPanelLabel.toUpperCase();
     gamesGrid.style.display  = 'none';
     lobbyPanel.style.display = 'flex';
     inlineJoinActive = false;

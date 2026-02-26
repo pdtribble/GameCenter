@@ -57,8 +57,8 @@ export function renderLobby(container, socket, state, navigate) {
     .then(games => {
       const meta = games.find(g => g.gameType === lobby?.game_type);
       if (meta) {
-        lobbyTitle.textContent = `${meta.label} Lobby`;
-        lobbyBadge.textContent = meta.label;
+        lobbyTitle.textContent = `${meta.label.toUpperCase()} Lobby`;
+        lobbyBadge.textContent = meta.label.toUpperCase();
         if (meta.botFillAllowed) {
           botFillBanner.textContent = `Bots will fill automatically to reach ${meta.botFillMin} players.`;
           botFillBanner.style.display = 'block';
@@ -84,12 +84,16 @@ export function renderLobby(container, socket, state, navigate) {
           <div class="gc-lobby-player-meta">${p.role === 'spectator' ? '👁 Spectator' : (p.is_bot ? '🤖 Bot' : '👤 Player')}</div>
         </div>
         <div class="gc-lobby-ready-dot${p.is_ready ? ' is-ready' : ''}" title="${p.is_ready ? 'Ready' : 'Not ready'}"></div>
+        ${amIHost && !isMe && !p.is_bot && p.role !== 'spectator' ? `<button class="gc-lobby-transfer-btn" data-transfer="${escHtml(p.id)}" title="Transfer host" style="background:none;border:1px solid rgba(255,255,255,0.1);color:rgba(240,240,248,0.4);border-radius:5px;padding:2px 7px;cursor:pointer;font-size:0.75rem;margin-right:2px">👑</button>` : ''}
         ${amIHost && !isMe && p.role !== 'spectator' ? `<button class="gc-lobby-kick-btn" data-kick="${escHtml(p.id)}">Kick</button>` : ''}
       </div>`;
     }).join('');
 
     playersList.querySelectorAll('.gc-lobby-kick-btn').forEach(btn => {
       btn.addEventListener('click', () => { window._kickPlayer(btn.dataset.kick); });
+    });
+    playersList.querySelectorAll('.gc-lobby-transfer-btn').forEach(btn => {
+      btn.addEventListener('click', () => { window._transferHost(btn.dataset.transfer); });
     });
   }
 
@@ -135,6 +139,15 @@ export function renderLobby(container, socket, state, navigate) {
     socket.emit('lobby:kick', { lobbyId: state.lobby?.id, targetPlayerId: targetId });
   };
 
+  // Global transfer host handler
+  window._transferHost = (targetId) => {
+    const target = state.lobbyPlayers?.find(p => p.id === targetId);
+    const name = target?.display_name || 'this player';
+    if (confirm(`Transfer host to ${name}?`)) {
+      socket.emit('lobby:transfer_host', { lobbyId: state.lobby?.id, targetPlayerId: targetId });
+    }
+  };
+
   return {
     update({ lobby, players }) {
       state.lobby = lobby;
@@ -155,6 +168,7 @@ export function renderLobby(container, socket, state, navigate) {
     },
     destroy() {
       delete window._kickPlayer;
+      delete window._transferHost;
       chat?.destroy?.();
     },
   };
