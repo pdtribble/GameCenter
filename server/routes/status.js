@@ -69,7 +69,7 @@ router.get('/api/lobbies', (req, res) => {
   try {
     const lobbies = db.prepare(`
       SELECT
-        l.id, l.join_code, l.game_type, l.status,
+        l.id, l.join_code, l.game_type, l.status, l.name AS lobby_name,
         p.display_name AS host_name,
         COUNT(lp.player_id) AS player_count
       FROM lobbies l
@@ -102,7 +102,8 @@ router.get('/api/lobbies', (req, res) => {
         gameType: row.game_type,
         gameLabel: label,
         gameIcon: icon,
-        hostName: row.host_name || 'Unknown',
+        lobbyName: row.lobby_name || null,
+        hostName: row.host_name || 'System',
         playerCount: row.player_count || 0,
         maxPlayers,
         status: row.status,
