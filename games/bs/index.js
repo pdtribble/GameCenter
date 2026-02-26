@@ -73,12 +73,33 @@ module.exports = {
         max: 10,
         step: 1,
       },
+      {
+        key: 'buyIn',
+        type: 'number',
+        label: 'Starting chips',
+        default: 100,
+        min: 10,
+        max: 10000,
+        step: 10,
+      },
+      {
+        key: 'betPerCard',
+        type: 'number',
+        label: 'Chips per card (penalty)',
+        default: 5,
+        min: 1,
+        max: 100,
+        step: 1,
+      },
     ];
   },
 
   // ── Lifecycle ────────────────────────────────────────────────────────────────
   initGame(players, config) {
     const hands = dealCards(players);
+    const buyIn = Math.max(0, parseInt(config.buyIn, 10) || 100);
+    const betPerCard = Math.max(1, parseInt(config.betPerCard, 10) || 5);
+    const cardTheme = config.card_theme || 'classic';
     return {
       phase: 'play',          // 'play' | 'bs-window'
       round: 1,
@@ -90,16 +111,22 @@ module.exports = {
       pileCards: [],          // private — hidden in getPublicState
       lastPlay: null,         // { playerId, displayName, count, claimedRank }
       lastChallenge: null,    // { callerId, callerName, targetId, targetName, wasBS, penaltyId, penaltyName, cards }
+      card_theme: cardTheme,
       players: players.map(p => ({
         id: p.id,
         displayName: p.displayName || p.display_name || p.id,
         is_bot: !!p.is_bot,
         handSize: hands[p.id].length,
+        chips: buyIn,
         status: 'playing',
       })),
       hands,
       scores: Object.fromEntries(players.map(p => [p.id, 0])),
-      config: { winTarget: Number(config?.winTarget) || 3 },
+      config: { 
+        winTarget: Number(config?.winTarget) || 3,
+        buyIn,
+        betPerCard,
+      },
       winner: null,
     };
   },
@@ -123,6 +150,7 @@ module.exports = {
         displayName: p.displayName || p.display_name || p.id,
         is_bot: p.is_bot,
         handSize: hands[p.id].length,
+        chips: state.config?.buyIn || 100,
         status: 'playing',
       })),
       hands,
@@ -175,7 +203,15 @@ module.exports = {
       if (remaining.length === 0) {
         s.scores[playerId] = (s.scores[playerId] || 0) + 1;
         s.winner = playerId;
-        // Stay in 'play' phase; isRoundOver will fire
+        // Award chips to winner from all players based on cards remaining
+        const betPerCard = s.config.betPerCard || 5;
+        for (const pl of s.players) {
+          if (pl.id !== playerId && pl.chips > 0) {
+            const penalty = Math.min(pl.chips, betPerCard);
+            pl.chips -= penalty;
+            s.players.find(p => p.id === playerId).chips += penalty;
+          }
+        }
         return { state: s };
       }
 
@@ -219,6 +255,17 @@ module.exports = {
       s.hands[penaltyId] = [...(s.hands[penaltyId] || []), ...s.pileCards];
       const penIdx = s.players.findIndex(p => p.id === penaltyId);
       if (penIdx !== -1) s.players[penIdx].handSize = s.hands[penaltyId].length;
+
+      // Chip penalty: winner gets chips from penalty player
+      const betPerCard = s.config.betPerCard || 5;
+      const cardCount = s.pileCards.length;
+      const penaltyPlayer = s.players.find(p => p.id === penaltyId);
+      const chipPenalty = Math.min(penaltyPlayer?.chips || 0, cardCount * betPerCard);
+      if (chipPenalty > 0) {
+        penaltyPlayer.chips -= chipPenalty;
+        const winnerIdx = s.players.findIndex(p => p.id === playerId);
+        if (winnerIdx !== -1) s.players[winnerIdx].chips += chipPenalty;
+      }
 
       s.lastChallenge = {
         callerId: playerId,
@@ -317,7 +364,14 @@ module.exports = {
       pileCount: state.pileCount,
       lastPlay: state.lastPlay,
       lastChallenge: state.lastChallenge,
-      players: state.players,
+      players: state.players.map(p => ({
+        id: p.id,
+        displayName: p.displayName,
+        is_bot: p.is_bot,
+        handSize: p.handSize,
+        chips: p.chips,
+        status: p.status,
+      })),
       scores: state.scores,
       config: state.config,
       winner: state.winner,
@@ -330,10 +384,17 @@ module.exports = {
     if (!state) return { scores: {}, round: 1 };
     const winnerId = state.winner;
     const winnerName = state.players?.find(p => p.id === winnerId)?.displayName || 'Unknown';
+    const scores = {};
+    const chips = {};
+    for (const p of (state.players || [])) {
+      scores[p.id] = p.chips || 0;
+      chips[p.id] = p.chips || 0;
+    }
     return {
       winner: winnerId,
       winnerName,
-      scores: state.scores || {},
+      scores,
+      chips,
       round: state.round || 1,
     };
   },

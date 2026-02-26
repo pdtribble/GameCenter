@@ -8,6 +8,14 @@ const GAME_ACCENTS = {
   'bs':           '#ff4560',
 };
 
+// ── Card deck themes ──────────────────────────────────────────────────────────
+const CARD_DECKS = [
+  { id: 'classic', name: 'Classic', accent: '#1a5c2a' },
+  { id: 'modern', name: 'Modern', accent: '#2d3748' },
+  { id: 'neon', name: 'Neon', accent: '#8b5cf6' },
+  { id: 'gold', name: 'Gold', accent: '#d4af37' },
+];
+
 // ── Game descriptions / icon overrides ───────────────────────────────────────
 const GAME_DESCS = {
   'blackjack': { desc: 'Classic casino card game', icon: '🃏' },
@@ -106,6 +114,55 @@ function injectSharedStyles() {
     .join-icon-btn.cancel  { border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.35); }
     .join-icon-btn.confirm:hover { background: rgba(57,255,20,0.12); }
     .join-icon-btn.cancel:hover  { background: rgba(255,255,255,0.06); }
+    /* Deck selector styles */
+    .cm-deck-scroll {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      padding: 8px 4px;
+      margin-bottom: 12px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255,255,255,0.2) transparent;
+    }
+    .cm-deck-scroll::-webkit-scrollbar { height: 4px; }
+    .cm-deck-scroll::-webkit-scrollbar-track { background: transparent; }
+    .cm-deck-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
+    .cm-deck-item {
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      padding: 8px;
+      border-radius: 8px;
+      border: 2px solid transparent;
+      transition: all 0.15s;
+    }
+    .cm-deck-item:hover { background: rgba(255,255,255,0.05); }
+    .cm-deck-item.selected {
+      border-color: var(--gc-gold, #f0c040);
+      background: rgba(240,192,64,0.1);
+    }
+    .cm-deck-preview {
+      width: 48px;
+      height: 68px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    .cm-deck-name {
+      font-family: var(--gc-mono,'DM Mono',monospace);
+      font-size: 0.6rem;
+      color: var(--gc-muted, rgba(240,240,248,0.4));
+      white-space: nowrap;
+    }
+    .cm-deck-item.selected .cm-deck-name {
+      color: var(--gc-gold, #f0c040);
+    }
   `;
   document.head.appendChild(s);
 }
@@ -474,6 +531,10 @@ export function renderHome(container, socket, state, navigate) {
             <label class="gc-label">Game</label>
             <select class="gc-input gc-select" id="cm-game">${gameOptions}</select>
           </div>
+          <div id="cm-deck-section" style="display:none">
+            <label class="gc-label">Card Deck</label>
+            <div class="cm-deck-scroll" id="cm-deck-scroll"></div>
+          </div>
           <div id="cm-bot-info" class="gc-section-label" style="display:none;font-size:0.67rem;padding:6px 0"></div>
           <div id="cm-settings"></div>
         </div>
@@ -488,6 +549,34 @@ export function renderHome(container, socket, state, navigate) {
     const cmSettings = backdrop.querySelector('#cm-settings');
     const cmBotInfo  = backdrop.querySelector('#cm-bot-info');
     const cmError    = backdrop.querySelector('#cm-error');
+    const cmDeckSection = backdrop.querySelector('#cm-deck-section');
+    const cmDeckScroll = backdrop.querySelector('#cm-deck-scroll');
+    let selectedDeck = 'classic';
+
+    // Card games that support deck selection
+    const CARD_GAMES = ['blackjack', 'poker', 'bs'];
+
+    function renderDeckSelector() {
+      const gt = cmGame.value;
+      if (CARD_GAMES.includes(gt)) {
+        cmDeckSection.style.display = 'block';
+        cmDeckScroll.innerHTML = CARD_DECKS.map(deck => `
+          <div class="cm-deck-item${deck.id === selectedDeck ? ' selected' : ''}" data-deck="${deck.id}">
+            <div class="cm-deck-preview" style="background:${deck.accent}">🃏</div>
+            <div class="cm-deck-name">${deck.name}</div>
+          </div>
+        `).join('');
+        cmDeckScroll.querySelectorAll('.cm-deck-item').forEach(item => {
+          item.addEventListener('click', () => {
+            cmDeckScroll.querySelectorAll('.cm-deck-item').forEach(d => d.classList.remove('selected'));
+            item.classList.add('selected');
+            selectedDeck = item.dataset.deck;
+          });
+        });
+      } else {
+        cmDeckSection.style.display = 'none';
+      }
+    }
 
     function updateCmSettings() {
       const gt  = cmGame.value;
@@ -528,7 +617,8 @@ export function renderHome(container, socket, state, navigate) {
     }
 
     if (gamesList.length) updateCmSettings();
-    cmGame.addEventListener('change', updateCmSettings);
+    cmGame.addEventListener('change', () => { updateCmSettings(); renderDeckSelector(); });
+    renderDeckSelector();
 
     // ESC closes modal — self-removing listener
     let modalEsc = null;
@@ -547,12 +637,20 @@ export function renderHome(container, socket, state, navigate) {
       const nickname = backdrop.querySelector('#cm-nickname').value.trim() || playerDisplayName || 'Player';
       if (!gt) { showModalError(cmError, 'Please select a game.'); return; }
       cmError.style.display = 'none';
+      const settings = collectSettings(backdrop, gt);
+      // Add card deck for card games
+      const CARD_GAMES = ['blackjack', 'poker', 'bs'];
+      if (CARD_GAMES.includes(gt)) {
+        settings.card_theme = selectedDeck;
+      }
       socket.emit('lobby:create', {
         gameType:   gt,
         playerName: nickname,
         pin:        '',
-        settings:   collectSettings(backdrop, gt),
+        settings:   settings,
       });
+      closeCreateModal();
+    });
       closeCreateModal();
     });
   }

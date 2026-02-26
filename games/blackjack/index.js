@@ -182,12 +182,14 @@ module.exports = {
     return [
       { key: 'buyIn', type: 'number', label: 'Starting chips', default: 100, min: 10, max: 10000, step: 10 },
       { key: 'minBet', type: 'number', label: 'Min bet per round', default: 10, min: 1, max: 500, step: 1 },
+      { key: 'cardTheme', type: 'select', label: 'Card deck', options: ['classic', 'modern', 'neon', 'gold'], default: 'classic' },
     ];
   },
 
   initGame(players, config) {
     const buyIn = Math.max(0, parseInt(config.buyIn, 10) || 100);
     const minBet = Math.max(1, parseInt(config.minBet, 10) || 10);
+    const cardTheme = config.cardTheme || 'classic';
     const s = {
       round: 1,
       phase: 'playing',
@@ -195,7 +197,8 @@ module.exports = {
       dealerHand: [],
       players: players.map(p => playerEntry(p, buyIn, 0, [], 'playing', null)),
       currentPlayerId: null,
-      config: { buyIn, minBet },
+      config: { buyIn, minBet, cardTheme },
+      card_theme: cardTheme,
     };
     return dealRound(s, players);
   },

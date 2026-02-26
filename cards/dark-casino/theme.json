@@ -1,0 +1,10 @@
+{
+  "id": "dark-casino",
+  "title": "Dark Casino",
+  "description": "Premium dark gold casino deck",
+  "cardWidth": 120,
+  "cardHeight": 168,
+  "format": "svg",
+  "namingConvention": "[Suit][Rank]",
+  "example": "C4.svg"
+}
