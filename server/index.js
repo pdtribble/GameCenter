@@ -12,11 +12,15 @@ const lobbyManager = require('./lobby-manager');
 const gameRunner = require('./game-runner');
 const syncRunner = require('./sync');
 
+const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
+
 const statusRouter = require('./routes/status');
 const adminRouter = require('./routes/admin');
 const joinRouter = require('./routes/join');
 const spRouter = require('./routes/singleplayer');
 const playerRouter = require('./routes/player');
+const authRouter = require('./routes/auth');
 const rateLimitMiddleware = require('./middleware/rate-limit');
 const authMiddleware = require('./middleware/auth');
 
@@ -43,10 +47,25 @@ app.use((req, res, next) => {
   next();
 });
 
+// Auto-create guest HTTP session on first page load (before static files)
+app.use((req, res, next) => {
+  if (!req.cookies?.gc_session && req.method === 'GET'
+      && (req.path === '/' || req.path === '/index.html')) {
+    const guestId = uuidv4();
+    const username = 'guest_' + crypto.randomBytes(4).toString('hex');
+    db.prepare('INSERT INTO players (id, username, display_name, is_guest) VALUES (?, ?, ?, 1)')
+      .run(guestId, username, 'Guest');
+    sessionManager.setSessionCookie(res, guestId);
+    req.cookies = { ...req.cookies, gc_session: guestId };
+  }
+  next();
+});
+
 // ── Static files ──────────────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, '..', 'client')));
 
 // ── Routes ────────────────────────────────────────────────────────────────────
+app.use('/', authRouter);
 app.use('/', statusRouter);
 app.use('/', spRouter);
 app.use('/', playerRouter);

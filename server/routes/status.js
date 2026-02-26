@@ -127,7 +127,7 @@ router.get('/api/me/stats', (req, res) => {
   }
 
   try {
-    const player = db.prepare('SELECT id, display_name, avatar_emoji, avatar_color FROM players WHERE id = ?').get(playerId);
+    const player = db.prepare('SELECT id, display_name, avatar_emoji, avatar_color, is_guest FROM players WHERE id = ?').get(playerId);
     if (!player) return res.json({ loggedIn: false, onlineCount });
 
     const stats = db.prepare(`
@@ -169,6 +169,7 @@ router.get('/api/me/stats', (req, res) => {
 
     res.json({
       loggedIn: true,
+      isGuest: player.is_guest === 1,
       playerId: player.id,
       displayName: player.display_name,
       avatarEmoji: player.avatar_emoji || '🎮',

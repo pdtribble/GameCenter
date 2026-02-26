@@ -8,7 +8,8 @@
       "Bash(node -e:*)",
       "Bash(node --check:*)",
       "Bash(\"C:/Users/Ptribble/Desktop/GameCenter/client/style.css\":*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(tail:*)"
     ]
   }
 }

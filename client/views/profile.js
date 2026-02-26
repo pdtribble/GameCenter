@@ -1,4 +1,5 @@
 // Profile view — STATS + SETTINGS sub-tabs (gc-* design system)
+import { openAuthModal } from '../components/auth-modal.js';
 
 export function renderProfile(container, socket, state, navigate) {
   container.innerHTML = `
@@ -212,12 +213,18 @@ export function renderProfile(container, socket, state, navigate) {
       }).catch(() => showMsg(clearMsgEl, 'Failed.', 'error'));
   });
 
-  // ── Fetch & render profile data ─────────────────────────────────────────────
+  // ── Fetch & render profile data (guest-gated) ────────────────────────────
   Promise.all([
     fetch('/api/me/stats').then(r => r.json()).catch(() => null),
     fetch('/api/me').then(r => r.json()).catch(() => null),
     fetch('/api/me/history').then(r => r.json()).catch(() => null),
   ]).then(([stats, me, history]) => {
+    // Show auth gate for guests
+    if (stats?.isGuest) {
+      renderGuestGate(container, navigate);
+      return;
+    }
+
     renderPlayerCard(container, stats, me);
     renderMpStats(container, stats);
     renderSpStats(container, stats);
@@ -405,4 +412,69 @@ function showMsg(el, msg, type) {
   el.style.color = type === 'success' ? 'var(--gc-green)' : 'var(--gc-red)';
   clearTimeout(el._msgTimer);
   el._msgTimer = setTimeout(() => { if (el.isConnected) el.textContent = ''; }, 3000);
+}
+
+// ── Guest auth gate ───────────────────────────────────────────────────────────
+function renderGuestGate(container, navigate) {
+  container.innerHTML = `
+    <div style="
+      height:100%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:#050a05;
+      padding:20px;
+      box-sizing:border-box;
+    ">
+      <div style="
+        background:#0a0f0a;
+        border:1px solid #1a2e1a;
+        border-radius:16px;
+        padding:32px 24px;
+        max-width:320px;
+        width:100%;
+        text-align:center;
+      ">
+        <div style="font-size:2.2rem;margin-bottom:16px">👤</div>
+        <div style="
+          color:#a8ffa8;
+          font-family:'DM Mono','Courier New',monospace;
+          font-size:0.85rem;
+          letter-spacing:1px;
+          margin-bottom:8px;
+        ">Sign in to view your profile</div>
+        <div style="
+          color:rgba(168,255,168,0.35);
+          font-family:'DM Mono','Courier New',monospace;
+          font-size:0.7rem;
+          line-height:1.5;
+          margin-bottom:28px;
+        ">Track stats, save progress, and persist your identity across sessions.</div>
+        <button id="prof-gate-login" style="
+          width:100%;padding:12px;
+          background:#39ff14;color:#050a05;
+          border:none;border-radius:8px;
+          font-family:'DM Mono','Courier New',monospace;
+          font-size:0.78rem;letter-spacing:2px;font-weight:700;
+          cursor:pointer;margin-bottom:10px;
+          -webkit-tap-highlight-color:transparent;
+        ">SIGN IN</button>
+        <button id="prof-gate-signup" style="
+          width:100%;padding:12px;
+          background:transparent;color:#39ff14;
+          border:1px solid #39ff14;border-radius:8px;
+          font-family:'DM Mono','Courier New',monospace;
+          font-size:0.78rem;letter-spacing:2px;
+          cursor:pointer;
+          -webkit-tap-highlight-color:transparent;
+        ">CREATE ACCOUNT</button>
+      </div>
+    </div>`;
+
+  container.querySelector('#prof-gate-login').addEventListener('click', () => {
+    openAuthModal(() => navigate('profile'), 'login');
+  });
+  container.querySelector('#prof-gate-signup').addEventListener('click', () => {
+    openAuthModal(() => navigate('profile'), 'signup');
+  });
 }

@@ -43,6 +43,23 @@ export function isPortrait() {
   return document.documentElement.dataset.layout === 'portrait';
 }
 
+// ── Guest mode indicator ───────────────────────────────────────────────────────
+let guestMode = false;
+
+export function setGuestMode(isGuest) {
+  guestMode = !!isGuest;
+  const tab = document.querySelector('#bottom-nav .nav-tab[data-view="profile"]');
+  if (!tab) return;
+  tab.querySelector('.nav-guest-dot')?.remove();
+  if (guestMode) {
+    const dot = document.createElement('span');
+    dot.className = 'nav-guest-dot';
+    dot.style.cssText = 'display:block;font-size:7px;color:rgba(168,255,168,0.3);font-family:monospace;letter-spacing:1px;line-height:1;margin-top:1px';
+    dot.textContent = 'GUEST';
+    tab.appendChild(dot);
+  }
+}
+
 // ── Nav visibility ────────────────────────────────────────────────────────────
 export function hideNav() {
   const nav = document.getElementById('bottom-nav');
