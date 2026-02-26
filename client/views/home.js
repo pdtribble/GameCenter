@@ -651,8 +651,6 @@ export function renderHome(container, socket, state, navigate) {
       });
       closeCreateModal();
     });
-      closeCreateModal();
-    });
   }
 
   // ── Join modal (URL prefill path — simplified to nickname + code) ──────────
