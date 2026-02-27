@@ -11,6 +11,19 @@ let difficulty = 'medium';
 let highScore = 0;
 let wins = 0;
 let keysPressed = {};
+let ballTrail = [];
+let soundEnabled = false;
+let particles = [];
+
+function playSound(type) {
+  if (!soundEnabled) return;
+  console.log(`[pong sound] ${type}`);
+}
+
+function toggleSound() {
+  soundEnabled = !soundEnabled;
+  return soundEnabled;
+}
 
 function injectStyles() {
   if (document.getElementById('pong-styles')) return;
@@ -156,11 +169,52 @@ function loadProgress() {
   }
 }
 
+function spawnParticles(x, y, color, count = 8) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x,
+      y,
+      vx: (Math.random() - 0.5) * 8,
+      vy: (Math.random() - 0.5) * 8,
+      life: 1,
+      color,
+      size: Math.random() * 4 + 2,
+    });
+  }
+}
+
+function updateParticles() {
+  particles = particles.filter(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.2;
+    p.life -= 0.03;
+    return p.life > 0;
+  });
+}
+
 function render() {
   if (!ctx || !state) return;
   
   const w = canvasEl.width;
   const h = canvasEl.height;
+  
+  // Update particles
+  updateParticles();
+  
+  // Draw particles
+  for (const p of particles) {
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+  }
+  ctx.globalAlpha = 1;
+  
+  // Update ball trail
+  if (state.phase === 'playing') {
+    ballTrail.push({ x: state.ballX, y: state.ballY });
+    if (ballTrail.length > 10) ballTrail.shift();
+  }
   
   // Clear
   ctx.fillStyle = '#000';
@@ -174,6 +228,17 @@ function render() {
   ctx.lineTo(w / 2, h);
   ctx.stroke();
   ctx.setLineDash([]);
+  
+  // Draw ball trail
+  for (let i = 0; i < ballTrail.length; i++) {
+    const t = ballTrail[i];
+    const alpha = (i / ballTrail.length) * 0.4;
+    const radius = state.ballRadius * (i / ballTrail.length) * 0.8;
+    ctx.fillStyle = `rgba(57, 255, 20, ${alpha})`;
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
   
   // Player paddle
   ctx.fillStyle = '#39ff14';
@@ -224,7 +289,18 @@ function gameLoop() {
   }
   
   // Tick
+  const oldRally = state.rally;
   state = pong.tick(state);
+  
+  // Spawn particles on paddle hit (when rally increases)
+  if (state.rally > oldRally) {
+    // Determine which paddle was hit based on ball direction
+    if (state.ballVX > 0) {
+      spawnParticles(state.ballX - state.ballRadius - 5, state.ballY, '#ff4560', 10);
+    } else {
+      spawnParticles(state.ballX + state.ballRadius + 5, state.ballY, '#39ff14', 10);
+    }
+  }
   
   // Render
   render();
@@ -247,6 +323,8 @@ function gameLoop() {
 }
 
 function showOverlay(overlayType) {
+  ballTrail = [];
+  particles = [];
   const overlay = containerEl.querySelector('#pong-overlay');
   if (!overlay) return;
   
@@ -362,6 +440,10 @@ export function render(container, options) {
   
   // Event listeners
   container.querySelector('#pong-back').addEventListener('click', () => navigateFn('singleplayer'));
+  container.querySelector('#pong-mute').addEventListener('click', (e) => {
+    const enabled = toggleSound();
+    e.target.textContent = enabled ? '🔊' : '🔇';
+  });
   
   document.addEventListener('keydown', handleKeyDown);
   document.addEventListener('keyup', handleKeyUp);

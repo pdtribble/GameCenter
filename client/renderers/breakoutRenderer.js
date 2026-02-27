@@ -10,6 +10,20 @@ let navigateFn = null;
 let difficulty = 'medium';
 let highScore = 0;
 let keysPressed = {};
+let particles = [];
+let ballTrail = [];
+let soundEnabled = false;
+let screenShake = 0;
+
+function playSound(type) {
+  if (!soundEnabled) return;
+  console.log(`[breakout sound] ${type}`);
+}
+
+function toggleSound() {
+  soundEnabled = !soundEnabled;
+  return soundEnabled;
+}
 
 function injectStyles() {
   if (document.getElementById('breakout-styles')) return;
@@ -169,15 +183,60 @@ function loadProgress() {
   }
 }
 
+function spawnParticles(x, y, color, count = 8) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x,
+      y,
+      vx: (Math.random() - 0.5) * 8,
+      vy: (Math.random() - 0.5) * 8,
+      life: 1,
+      color,
+      size: Math.random() * 4 + 2,
+    });
+  }
+}
+
+function updateParticles() {
+  particles = particles.filter(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.2;
+    p.life -= 0.03;
+    return p.life > 0;
+  });
+}
+
 function render() {
   if (!ctx || !state) return;
   
   const w = canvasEl.width;
   const h = canvasEl.height;
   
+  // Update particles
+  updateParticles();
+  
+  // Apply screen shake
+  ctx.save();
+  if (screenShake > 0) {
+    const shakeX = (Math.random() - 0.5) * screenShake;
+    const shakeY = (Math.random() - 0.5) * screenShake;
+    ctx.translate(shakeX, shakeY);
+    screenShake *= 0.9;
+    if (screenShake < 0.5) screenShake = 0;
+  }
+  
   // Clear
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, w, h);
+  
+  // Draw particles
+  for (const p of particles) {
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+  }
+  ctx.globalAlpha = 1;
   
   // Draw bricks
   for (const brick of state.bricks) {
@@ -202,6 +261,22 @@ function render() {
   // Paddle
   ctx.fillStyle = '#39ff14';
   ctx.fillRect(state.paddleX - state.paddleWidth / 2, h - 30 - state.paddleHeight, state.paddleWidth, state.paddleHeight);
+  
+  // Ball trail
+  if (state.phase === 'playing' && !state.ballAttached) {
+    ballTrail.push({ x: state.ballX, y: state.ballY });
+    if (ballTrail.length > 8) ballTrail.shift();
+  }
+  
+  for (let i = 0; i < ballTrail.length; i++) {
+    const t = ballTrail[i];
+    const alpha = (i / ballTrail.length) * 0.4;
+    const radius = state.ballRadius * (i / ballTrail.length) * 0.8;
+    ctx.fillStyle = `rgba(57, 255, 20, ${alpha})`;
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
   
   // Ball
   ctx.fillStyle = '#fff';
@@ -230,6 +305,8 @@ function render() {
   let livesStr = '';
   for (let i = 0; i < state.lives; i++) livesStr += '♥ ';
   ctx.fillText(livesStr, w / 2, 30);
+  
+  ctx.restore();
 }
 
 function gameLoop() {
@@ -244,8 +321,24 @@ function gameLoop() {
     state = breakout.movePaddle(state, speed);
   }
   
+  // Track brick destruction for particles
+  const oldBricks = state.bricks;
+  
   // Tick
   state = breakout.tick(state);
+  
+  // Spawn particles for destroyed bricks
+  for (let i = 0; i < state.bricks.length; i++) {
+    if (oldBricks[i]?.alive && !state.bricks[i].alive) {
+      spawnParticles(
+        oldBricks[i].x + oldBricks[i].width / 2,
+        oldBricks[i].y + oldBricks[i].height / 2,
+        oldBricks[i].color,
+        12
+      );
+      screenShake = 6;
+    }
+  }
   
   // Render
   render();
@@ -264,6 +357,9 @@ function gameLoop() {
 }
 
 function showOverlay(overlayType) {
+  particles = [];
+  ballTrail = [];
+  screenShake = 0;
   const overlay = containerEl.querySelector('#breakout-overlay');
   if (!overlay) return;
   
@@ -367,6 +463,10 @@ export function render(container, options) {
   
   // Event listeners
   container.querySelector('#breakout-back').addEventListener('click', () => navigateFn('singleplayer'));
+  container.querySelector('#breakout-mute').addEventListener('click', (e) => {
+    const enabled = toggleSound();
+    e.target.textContent = enabled ? '🔊' : '🔇';
+  });
   
   document.addEventListener('keydown', handleKeyDown);
   document.addEventListener('keyup', handleKeyUp);

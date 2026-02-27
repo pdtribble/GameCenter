@@ -9,6 +9,26 @@ const DIFFICULTY_SETTINGS = {
 const BRICK_COLORS = ['#ff4560', '#ff9800', '#30d890', '#4090ff', '#9060ff'];
 const BRICK_POINTS = [10, 20, 30, 40, 50];
 
+const POWERUP_TYPES = {
+  wide: { color: '#f0c040', symbol: '↔', duration: 10000 },
+  slow: { color: '#00ccff', symbol: '🐢', duration: 8000 },
+  extra: { color: '#ff69b4', symbol: '✦', duration: 0 },
+};
+
+function createPowerUp(x, y) {
+  const types = Object.keys(POWERUP_TYPES);
+  const type = types[Math.floor(Math.random() * types.length)];
+  return {
+    x,
+    y,
+    type,
+    ...POWERUP_TYPES[type],
+    speed: 2,
+    width: 24,
+    height: 24,
+  };
+}
+
 function getDifficultySettings(difficulty) {
   return DIFFICULTY_SETTINGS[difficulty] || DIFFICULTY_SETTINGS.easy;
 }
@@ -64,6 +84,8 @@ function initGame(difficulty) {
     phase: 'ready',
     paused: false,
     ballAttached: true,
+    powerUps: [],
+    activePowerUps: {},
   };
 }
 
@@ -161,12 +183,45 @@ function updateBall(state) {
   // Calculate score from destroyed bricks
   const oldBricks = state.bricks;
   let pointsGained = 0;
+  let newPowerUps = [...(state.powerUps || [])];
+  
   for (let i = 0; i < newBricks.length; i++) {
     if (oldBricks[i].alive && !newBricks[i].alive) {
       pointsGained += oldBricks[i].points * state.level;
+      // 20% chance to spawn powerup
+      if (Math.random() < 0.2) {
+        newPowerUps.push(createPowerUp(
+          oldBricks[i].x + oldBricks[i].width / 2,
+          oldBricks[i].y + oldBricks[i].height
+        ));
+      }
     }
   }
   score += pointsGained;
+  
+  // Update powerups
+  newPowerUps = newPowerUps.map(p => ({ ...p, y: p.y + p.speed }));
+  
+  // Collect powerups with paddle
+  const paddleTop = state.height - 30 - state.paddleHeight;
+  const currentPaddleWidth = (state.activePowerUps?.wide) ? state.paddleWidth * 1.5 : state.paddleWidth;
+  newPowerUps = newPowerUps.filter(p => {
+    if (p.y + p.height >= paddleTop &&
+        p.x + p.width / 2 >= state.paddleX - currentPaddleWidth / 2 &&
+        p.x - p.width / 2 <= state.paddleX + currentPaddleWidth / 2) {
+      // Activate powerup
+      if (p.type === 'wide') {
+        return false; // wide is handled in renderer
+      }
+      if (p.type === 'slow') {
+        return false;
+      }
+      if (p.type === 'extra') {
+        return false;
+      }
+    }
+    return p.y < state.height;
+  });
   
   // Check if ball fell
   if (ballY > state.height) {
@@ -182,6 +237,8 @@ function updateBall(state) {
       ballVX: getDifficultySettings(state.difficulty).ballSpeed,
       ballVY: 0,
       ballAttached: true,
+      powerUps: [],
+      activePowerUps: {},
     };
   }
   
@@ -201,10 +258,11 @@ function updateBall(state) {
       ballVX: newSpeed * (Math.random() > 0.5 ? 1 : -1),
       ballVY: 0,
       ballAttached: true,
+      powerUps: [],
     };
   }
   
-  return { ...state, bricks: newBricks, ballX, ballY, ballVX, ballVY, score };
+  return { ...state, bricks: newBricks, ballX, ballY, ballVX, ballVY, score, powerUps: newPowerUps };
 }
 
 function tick(state) {
@@ -229,9 +287,11 @@ function deserializeState(json) {
 
 module.exports = {
   DIFFICULTY_SETTINGS,
+  POWERUP_TYPES,
   getDifficultySettings,
   initGame,
   createBricks,
+  createPowerUp,
   movePaddle,
   launchBall,
   updateBall,

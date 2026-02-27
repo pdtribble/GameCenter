@@ -58,13 +58,48 @@ function movePlayer(state, dy) {
   return { ...state, playerY: newY };
 }
 
+function predictBallY(state) {
+  if (state.ballVX <= 0) return state.ballY;
+  
+  let x = state.ballX;
+  let y = state.ballY;
+  let vx = state.ballVX;
+  let vy = state.ballVY;
+  
+  while (x < state.width - 30 - state.paddleWidth) {
+    x += vx;
+    y += vy;
+    
+    if (y - state.ballRadius <= 0 || y + state.ballRadius >= state.height) {
+      vy = -vy;
+    }
+  }
+  
+  return y;
+}
+
 function moveAI(state) {
-  const targetY = state.ballY - state.paddleHeight / 2;
+  let targetY;
+  
+  // AI speeds up as rally increases (max 50% increase)
+  const rallyMultiplier = 1 + Math.min(state.rally * 0.02, 0.5);
+  const currentAISpeed = state.aiSpeed * rallyMultiplier;
+  
+  if (state.ballVX > 0) {
+    targetY = predictBallY(state);
+  } else {
+    const centerY = state.height / 2;
+    const retreatSpeed = 0.3;
+    targetY = state.aiY + (centerY - state.aiY) * retreatSpeed;
+  }
+  
+  targetY = targetY - state.paddleHeight / 2;
+  
   const diff = targetY - state.aiY;
-  const move = Math.sign(diff) * Math.min(Math.abs(diff), state.aiSpeed * state.height);
+  const move = Math.sign(diff) * Math.min(Math.abs(diff), currentAISpeed * state.height);
   
   const newY = Math.max(state.paddleHeight / 2, Math.min(state.height - state.paddleHeight / 2, state.aiY + move));
- return { ...state, aiY: newY };
+  return { ...state, aiY: newY };
 }
 
 function updateBall(state) {
