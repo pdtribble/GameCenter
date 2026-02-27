@@ -94,7 +94,20 @@ function handleCreate(socket, io, data) {
 
   const lobbyId = uuidv4();
   const joinCode = makeUniqueJoinCode();
-  const safeSettings = JSON.stringify(typeof settings === 'object' && settings !== null ? settings : {});
+  
+  // Defensive defaults for settings
+  const safeSettingsObj = typeof settings === 'object' && settings !== null ? settings : {};
+  const defaults = {
+    buyIn: 100,
+    card_theme: 'default',
+    entryFee: 50,
+    startingChips: 1000,
+    minBet: 10,
+    smallBlind: 25,
+    botDifficulty: 'medium',
+  };
+  const mergedSettings = { ...defaults, ...safeSettingsObj };
+  const safeSettings = JSON.stringify(mergedSettings);
   const safeName = sanitize(lobbyName, 64) || 'My Lobby';
 
   db.transaction(() => {

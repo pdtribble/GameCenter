@@ -71,6 +71,7 @@ export function renderSingleplayer(container, socket, state, navigate) {
       padding:16px;
       box-sizing:border-box;
       overflow:hidden;
+      position:relative;
     ">
       <!-- Header -->
       <div style="
@@ -224,15 +225,6 @@ export function renderSingleplayer(container, socket, state, navigate) {
         stats:  tetrisStats,
         formatStats: (s) => s?.highScore != null ? `<span>best <span style="color:var(--gc-gold,#f0c040)">${s.highScore}</span></span>` : '',
       },
-      {
-        id:     'poker',
-        name:   'Poker',
-        icon:   '♠️',
-        desc:   "Texas Hold'em vs bots. No buy-in for SP mode.",
-        accent: '#d4af37',
-        stats:  null,
-        formatStats: () => '',
-      },
     ];
 
     for (const g of games) {
@@ -275,6 +267,24 @@ export function renderSingleplayer(container, socket, state, navigate) {
       warn.style.cssText = 'color:rgba(168,255,168,0.2);font-family:monospace;font-size:11px;text-align:center;margin-top:16px;grid-column:1/-1';
       warn.textContent = '⚠ Progress won\'t be saved as guest';
       grid.appendChild(warn);
+    }
+
+    // Chip badge in top-right
+    const spView = container.querySelector('#sp-view');
+    if (spView) {
+      const chipBadge = document.createElement('div');
+      chipBadge.id = 'gc-chip-badge';
+      chipBadge.style.cssText = 'position:absolute;top:14px;right:16px;font-family:monospace;font-size:13px;color:rgba(168,255,168,0.6);letter-spacing:1px;pointer-events:none;z-index:10';
+      chipBadge.innerHTML = '🪙 <span id="gc-chip-count"></span>';
+      spView.appendChild(chipBadge);
+      fetch('/api/chips')
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (!data) return;
+          const el = document.getElementById('gc-chip-count');
+          if (el) el.textContent = data.chips.toLocaleString();
+        })
+        .catch(() => {});
     }
   });
 
