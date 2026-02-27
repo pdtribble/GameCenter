@@ -360,9 +360,9 @@ function showOverlay(overlayType) {
       state = pong.initGame(difficulty);
       state.highScore = highScore;
       state.wins = wins;
-      state.phase = 'ready';
+      state.phase = 'playing';
       overlay.classList.add('hidden');
-      drawFrame();
+      gameLoop();
     });
   } else if (overlayType === 'lost') {
     overlay.innerHTML = `
@@ -375,14 +375,17 @@ function showOverlay(overlayType) {
       state = pong.initGame(difficulty);
       state.highScore = highScore;
       state.wins = wins;
-      state.phase = 'ready';
+      state.phase = 'playing';
       overlay.classList.add('hidden');
-      drawFrame();
+      gameLoop();
     });
   }
 }
 
 function handleKeyDown(e) {
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'W', 'a', 'A', 's', 'S'].includes(e.key)) {
+    e.preventDefault();
+  }
   keysPressed[e.key] = true;
 }
 

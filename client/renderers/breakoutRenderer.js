@@ -395,14 +395,17 @@ function showOverlay(overlayType) {
     containerEl.querySelector('#breakout-retry-btn').addEventListener('click', () => {
       state = breakout.initGame(difficulty);
       state.highScore = highScore;
-      state.phase = 'ready';
+      state.phase = 'playing';
       overlay.classList.add('hidden');
-      drawFrame();
+      gameLoop();
     });
   }
 }
 
 function handleKeyDown(e) {
+  if (['ArrowLeft', 'ArrowRight', 'a', 'A', 'd', 'D', ' '].includes(e.key)) {
+    e.preventDefault();
+  }
   keysPressed[e.key] = true;
   
   // Launch ball on space
