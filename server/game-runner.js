@@ -236,6 +236,22 @@ function handleSitIn(socket, io, data) {
   const session = activeSessions.get(sessionId);
   if (!session) return;
   session.sittingOut.delete(socket.playerId);
+  
+  // Check if game was paused for bot-only round - resume if human rejoining
+  if (session.pausedForPlayers && !socket.playerId.startsWith('bot-')) {
+    const humanActive = session.players.filter(p => !p.is_bot && !session.sittingOut.has(p.id));
+    if (humanActive.length > 0) {
+      session.pausedForPlayers = false;
+      io.to(`session:${sessionId}`).emit('server:game_resumed', {
+        message: 'Game resumed!'
+      });
+      console.log(`[game] resumed session=${sessionId} (player returned)`);
+      // Start a new round
+      advanceRound(io, sessionId);
+      return;
+    }
+  }
+  
   emitGameState(io, sessionId, session);
 }
 
@@ -266,6 +282,19 @@ function advanceRound(io, sessionId) {
 
   if (activePlayers.length < (session.module.minPlayers || 2)) {
     finishGame(io, sessionId);
+    return;
+  }
+
+  // Check for bot-only round (no human players active) - pause instead
+  const humanActivePlayers = activePlayers.filter(p => !p.is_bot);
+  if (humanActivePlayers.length === 0) {
+    // Pause the game - no point running bots only
+    session.pausedForPlayers = true;
+    io.to(`session:${sessionId}`).emit('server:game_paused', {
+      reason: 'waiting_for_players',
+      message: 'Waiting for a player to return...'
+    });
+    console.log(`[game] paused session=${sessionId} (bot-only round)`);
     return;
   }
 

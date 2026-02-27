@@ -127,6 +127,12 @@ function injectStyles() {
   color: rgba(168,255,168,0.8); z-index: 100; pointer-events: none;
 }
 #bj-round-timer { color: #39ff14; font-size: 16px; font-weight: bold; min-width: 20px; text-align: center; }
+#bj-paused-msg {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: 'DM Mono', 'Courier New', monospace; font-size: 13px;
+  color: rgba(168,255,168,0.4); letter-spacing: 3px; pointer-events: none;
+}
 .bj-turn-pulse { animation: bj-turn-pulse-anim 1.2s ease-in-out infinite; }
 @keyframes bj-turn-pulse-anim {
   0%,100% { filter: drop-shadow(0 0 4px rgba(57,255,20,0.2)); }
@@ -1045,6 +1051,22 @@ function hideSitOutToggle() {
   if (btn) btn.remove();
 }
 
+function showPausedMessage() {
+  const existing = document.getElementById('bj-paused-msg');
+  if (existing) return;
+  const scene = document.getElementById('bj-scene');
+  if (!scene) return;
+  const msg = document.createElement('div');
+  msg.id = 'bj-paused-msg';
+  msg.textContent = 'WAITING FOR PLAYER...';
+  scene.appendChild(msg);
+}
+
+function hidePausedMessage() {
+  const msg = document.getElementById('bj-paused-msg');
+  if (msg) msg.remove();
+}
+
 // ── Round End Countdown ──────────────────────────────────────────────────────────
 function getRoundResultText(state) {
   const me = state.players && state.players.find(function(p) { return p.id === myPlayerId; });
@@ -1125,6 +1147,18 @@ export function render(container, gameState, socket, playerId, hostPlayerId) {
 
   buildDOM(container, gameState);
 
+  // Socket listeners for paused state
+  socket.on('server:game_paused', function(data) {
+    if (data.reason === 'waiting_for_players') {
+      clearRoundEndCountdown();
+      hideSitOutToggle();
+      showPausedMessage();
+    }
+  });
+  socket.on('server:game_resumed', function() {
+    hidePausedMessage();
+  });
+
   // Populate join pill
   const joinPill = document.getElementById('bj-join-pill');
   if (joinPill && gameState.joinCode) {
@@ -1160,6 +1194,7 @@ export function update(gameState, playerId, hostPlayerId) {
       startRoundEndCountdown(gameState);
     }
     showSitOutToggle();
+    hidePausedMessage(); // Clear paused msg if we enter intermission normally
     // Auto-sit-out if toggle was set and round is starting
     if (sitOutNextRound && socketRef) {
       socketRef.emit('game:sit_out', { sessionId: socketRef.currentSessionId });
@@ -1173,6 +1208,7 @@ export function update(gameState, playerId, hostPlayerId) {
   } else {
     clearRoundEndCountdown();
     hideSitOutToggle();
+    hidePausedMessage();
   }
 
   // Theme change — rebuild all cards
@@ -1210,6 +1246,10 @@ export function destroy() {
   if (roundEndInterval) { clearInterval(roundEndInterval); roundEndInterval = null; }
   if (audioCtx) { audioCtx.close().catch(function() {}); audioCtx = null; }
   if (styleTag) { styleTag.remove(); styleTag = null; }
+  if (socketRef) {
+    socketRef.off('server:game_paused');
+    socketRef.off('server:game_resumed');
+  }
   document.querySelectorAll('.bj-card[style*="position: fixed"], .bj-card[style*="position:fixed"]').forEach(function(el) { el.remove(); });
   if (containerRef) { containerRef.innerHTML = ''; containerRef = null; }
   currentGameState = null; myPlayerId = null; socketRef = null;

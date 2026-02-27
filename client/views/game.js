@@ -135,7 +135,10 @@ export function renderGame(container, socket, state, navigate) {
   function updateIntermission(gs) {
     if (!gs) return;
     const isIntermission = gs.enginePhase === 'intermission';
-    intermissionOverlay.style.display = isIntermission ? 'flex' : 'none';
+    
+    // Skip overlay for blackjack - renderer handles its own intermission UI
+    const isBlackjack = gameType === 'blackjack';
+    intermissionOverlay.style.display = (isIntermission && !isBlackjack) ? 'flex' : 'none';
 
     if (isIntermission) {
       const readyPlayers = gs.readyPlayers || [];
