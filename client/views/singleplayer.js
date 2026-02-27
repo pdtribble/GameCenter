@@ -125,14 +125,20 @@ export function renderSingleplayer(container, socket, state, navigate) {
   const pacmanSavesP = playerId
     ? fetch('/api/sp/saves/pacman').then(r => r.ok ? r.json() : []).catch(() => [])
     : Promise.resolve([]);
-  const tetrisSavesP = playerId
+const tetrisSavesP = playerId
     ? fetch('/api/sp/saves/tetris').then(r => r.ok ? r.json() : []).catch(() => [])
+    : Promise.resolve([]);
+  const pongSavesP = playerId
+    ? fetch('/api/sp/saves/pong').then(r => r.ok ? r.json() : []).catch(() => [])
+    : Promise.resolve([]);
+  const breakoutSavesP = playerId
+    ? fetch('/api/sp/saves/breakout').then(r => r.ok ? r.json() : []).catch(() => [])
     : Promise.resolve([]);
 
   // Check if guest (to show progress warning)
   const statsApiP = fetch('/api/me/stats').then(r => r.json()).catch(() => null);
 
-  Promise.all([msStatsP, snakeSavesP, t48SavesP, wordleSavesP, sudokuSavesP, pacmanSavesP, tetrisSavesP, statsApiP]).then(([msStats, snakeSaves, t48Saves, wordleSaves, sudokuSaves, pacmanSaves, tetrisSaves, meStats]) => {
+  Promise.all([msStatsP, snakeSavesP, t48SavesP, wordleSavesP, sudokuSavesP, pacmanSavesP, tetrisSavesP, pongSavesP, breakoutSavesP, statsApiP]).then(([msStats, snakeSaves, t48Saves, wordleSaves, sudokuSaves, pacmanSaves, tetrisSaves, pongSaves, breakoutSaves, meStats]) => {
     const snakeStats = (() => {
       const hs = snakeSaves.find(s => s.slot === 'highscore');
       return hs?.data?.highScore != null ? { highScore: hs.data.highScore } : null;
@@ -155,9 +161,17 @@ export function renderSingleplayer(container, socket, state, navigate) {
       const hs = pacmanSaves.find(s => s.slot === 'highscore');
       return hs?.data?.highScore != null ? { highScore: hs.data.highScore } : null;
     })();
-    const tetrisStats = (() => {
+const tetrisStats = (() => {
       const hs = tetrisSaves.find(s => s.slot === 'highscore');
       return hs?.data?.highScore != null ? { highScore: hs.data.highScore } : null;
+    })();
+    const pongStats = (() => {
+      const stats = pongSaves.find(s => s.slot === 'stats');
+      return stats?.data?.highScore != null ? { highScore: stats.data.highScore } : null;
+    })();
+    const breakoutStats = (() => {
+      const stats = breakoutSaves.find(s => s.slot === 'stats');
+      return stats?.data?.highScore != null ? { highScore: stats.data.highScore } : null;
     })();
     const isGuest = meStats?.isGuest === true;
     grid.innerHTML = '';
@@ -233,6 +247,24 @@ export function renderSingleplayer(container, socket, state, navigate) {
         accent: '#f0c040',
         stats:  null,
         formatStats: (s) => '',
+      },
+      {
+        id:     'pong',
+        name:   'Pong',
+        icon:   '🏓',
+        desc:   'Classic arcade pong — beat the AI!',
+        accent: '#39ff14',
+        stats:  pongStats,
+        formatStats: (s) => s?.highScore != null ? `<span>best rally <span style="color:var(--gc-gold,#f0c040)">${s.highScore}</span></span>` : '',
+      },
+      {
+        id:     'breakout',
+        name:   'Breakout',
+        icon:   '🧱',
+        desc:   'Break bricks, clear levels. Classic arcade action!',
+        accent: '#ff4560',
+        stats:  breakoutStats,
+        formatStats: (s) => s?.highScore != null ? `<span>best <span style="color:var(--gc-gold,#f0c040)">${s.highScore}</span></span>` : '',
       },
     ];
 
