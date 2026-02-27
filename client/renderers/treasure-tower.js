@@ -677,6 +677,11 @@ function renderBettingPanel(container) {
         `).join('')}
       </div>
       
+      <div class="tt-chip-balance" style="text-align:center;margin-bottom:16px;padding:8px;background:rgba(0,0,0,0.3);border-radius:6px">
+        <span style="color:rgba(240,240,248,0.5);font-size:0.65rem;letter-spacing:1px">YOUR CHIPS</span>
+        <div style="color:#f0c040;font-size:1.3rem;font-weight:bold">${options.chipBalance || 0}</div>
+      </div>
+      
       <div class="tt-total-wager">
         <div class="tt-total-label">TOTAL WAGER</div>
         <div class="tt-total-value" id="tt-total-wager">${climbStake + safetyStake}</div>

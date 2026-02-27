@@ -376,7 +376,10 @@ export function renderTreasureTower(container, socket, state, navigate) {
   }
   
   async function fetchChipBalance() {
-    if (!playerId) return 0;
+    if (!playerId) {
+      const guestChips = parseInt(localStorage.getItem('tt_guest_chips') || '500', 10);
+      return guestChips;
+    }
     try {
       const res = await fetch('/api/chips');
       if (!res.ok) return 0;
@@ -387,8 +390,24 @@ export function renderTreasureTower(container, socket, state, navigate) {
     }
   }
   
+  async function saveGuestChips(amount) {
+    if (!playerId) {
+      localStorage.setItem('tt_guest_chips', String(amount));
+    }
+  }
+  
   async function deductChips(amount) {
-    if (!playerId) return true;
+    if (!playerId) {
+      const guestChips = parseInt(localStorage.getItem('tt_guest_chips') || '500', 10);
+      if (guestChips < amount) {
+        alert('Not enough chips!');
+        return false;
+      }
+      const newBalance = guestChips - amount;
+      localStorage.setItem('tt_guest_chips', String(newBalance));
+      chipBalance = newBalance;
+      return true;
+    }
     try {
       const res = await fetch('/api/chips/bet', {
         method: 'POST',
@@ -410,7 +429,14 @@ export function renderTreasureTower(container, socket, state, navigate) {
   }
   
   async function awardChips(amount, reason) {
-    if (!playerId || amount <= 0) return;
+    if (amount <= 0) return;
+    if (!playerId) {
+      const guestChips = parseInt(localStorage.getItem('tt_guest_chips') || '500', 10);
+      const newBalance = guestChips + amount;
+      localStorage.setItem('tt_guest_chips', String(newBalance));
+      chipBalance = newBalance;
+      return;
+    }
     try {
       await fetch('/api/chips', {
         method: 'POST',
