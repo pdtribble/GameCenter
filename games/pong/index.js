@@ -193,7 +193,7 @@ function deserializeState(json) {
   return JSON.parse(json);
 }
 
-module.exports = {
+export {
   DIFFICULTY_SETTINGS,
   getDifficultySettings,
   initGame,
@@ -205,9 +205,3 @@ module.exports = {
   serializeState,
   deserializeState,
 };
-
-if (typeof exports !== 'undefined') {
-  Object.keys(module.exports).forEach(key => {
-    exports[key] = module.exports[key];
-  });
-}
