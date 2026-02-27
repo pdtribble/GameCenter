@@ -152,7 +152,7 @@ function deserializeState(json) {
   }
 }
 
-module.exports = {
+export {
   getDailyWord,
   mulberry32,
   initGame,

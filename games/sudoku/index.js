@@ -297,7 +297,7 @@ function deserializeState(json) {
   }
 }
 
-module.exports = {
+export {
   mulberry32,
   generatePuzzle,
   createInitialState,

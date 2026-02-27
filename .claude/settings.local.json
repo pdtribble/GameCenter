@@ -10,7 +10,10 @@
       "Bash(\"C:/Users/Ptribble/Desktop/GameCenter/client/style.css\":*)",
       "Bash(node:*)",
       "Bash(tail:*)",
-      "Bash(cd C:\\\\Users\\\\Ptribble\\\\Desktop\\\\GameCenter:*)"
+      "Bash(cd C:\\\\Users\\\\Ptribble\\\\Desktop\\\\GameCenter:*)",
+      "Bash(timeout 8 node:*)",
+      "Bash(do node:*)",
+      "Bash(lsof:*)"
     ]
   }
 }
