@@ -74,12 +74,12 @@ module.exports = {
         step: 1,
       },
       {
-        key: 'buyIn',
+        key: 'entryFee',
         type: 'number',
-        label: 'Starting chips',
-        default: 100,
+        label: 'Entry fee per round',
+        default: 50,
         min: 10,
-        max: 10000,
+        max: 1000,
         step: 10,
       },
       {
@@ -97,9 +97,9 @@ module.exports = {
   // ── Lifecycle ────────────────────────────────────────────────────────────────
   initGame(players, config) {
     const hands = dealCards(players);
-    const buyIn = Math.max(0, parseInt(config.buyIn, 10) || 100);
+    const entryFee = Math.max(10, parseInt(config.entryFee, 10) || 50);
     const betPerCard = Math.max(1, parseInt(config.betPerCard, 10) || 5);
-    const cardTheme = config.card_theme || 'classic';
+    const cardTheme = config.card_theme || 'default';
     return {
       phase: 'play',          // 'play' | 'bs-window'
       round: 1,
@@ -112,19 +112,21 @@ module.exports = {
       lastPlay: null,         // { playerId, displayName, count, claimedRank }
       lastChallenge: null,    // { callerId, callerName, targetId, targetName, wasBS, penaltyId, penaltyName, cards }
       card_theme: cardTheme,
+      pot: 0,
+      entry_fee: entryFee,
       players: players.map(p => ({
         id: p.id,
         displayName: p.displayName || p.display_name || p.id,
         is_bot: !!p.is_bot,
         handSize: hands[p.id].length,
-        chips: buyIn,
+        chips: 0, // BS uses pot, not player chips
         status: 'playing',
       })),
       hands,
       scores: Object.fromEntries(players.map(p => [p.id, 0])),
       config: { 
         winTarget: Number(config?.winTarget) || 3,
-        buyIn,
+        entryFee,
         betPerCard,
       },
       winner: null,
@@ -133,6 +135,12 @@ module.exports = {
 
   startNextRound(state, activePlayers) {
     const hands = dealCards(activePlayers);
+    const entryFee = state.config?.entryFee || 50;
+    // Deduct entry fee from each active player and add to pot
+    let pot = state.pot || 0;
+    for (const p of activePlayers) {
+      pot += entryFee;
+    }
     return {
       ...state,
       phase: 'play',
@@ -145,12 +153,13 @@ module.exports = {
       pileCards: [],
       lastPlay: null,
       lastChallenge: null,
+      pot,
       players: activePlayers.map(p => ({
         id: p.id,
         displayName: p.displayName || p.display_name || p.id,
         is_bot: p.is_bot,
         handSize: hands[p.id].length,
-        chips: state.config?.buyIn || 100,
+        chips: 0,
         status: 'playing',
       })),
       hands,
@@ -203,15 +212,11 @@ module.exports = {
       if (remaining.length === 0) {
         s.scores[playerId] = (s.scores[playerId] || 0) + 1;
         s.winner = playerId;
-        // Award chips to winner from all players based on cards remaining
-        const betPerCard = s.config.betPerCard || 5;
-        for (const pl of s.players) {
-          if (pl.id !== playerId && pl.chips > 0) {
-            const penalty = Math.min(pl.chips, betPerCard);
-            pl.chips -= penalty;
-            s.players.find(p => p.id === playerId).chips += penalty;
-          }
-        }
+        // Award 80% of pot to winner
+        const potShare = Math.floor((s.pot || 0) * 0.8);
+        s.potWinnings = s.potWinnings || {};
+        s.potWinnings[playerId] = (s.potWinnings[playerId] || 0) + potShare;
+        s.pot = 0;
         return { state: s };
       }
 
@@ -362,6 +367,7 @@ module.exports = {
       currentRank: state.currentRank,
       rankIdx: state.rankIdx,
       pileCount: state.pileCount,
+      pot: state.pot || 0,
       lastPlay: state.lastPlay,
       lastChallenge: state.lastChallenge,
       players: state.players.map(p => ({
@@ -369,7 +375,6 @@ module.exports = {
         displayName: p.displayName,
         is_bot: p.is_bot,
         handSize: p.handSize,
-        chips: p.chips,
         status: p.status,
       })),
       scores: state.scores,
@@ -385,16 +390,15 @@ module.exports = {
     const winnerId = state.winner;
     const winnerName = state.players?.find(p => p.id === winnerId)?.displayName || 'Unknown';
     const scores = {};
-    const chips = {};
+    const potWinnings = state.potWinnings || {};
     for (const p of (state.players || [])) {
-      scores[p.id] = p.chips || 0;
-      chips[p.id] = p.chips || 0;
+      scores[p.id] = potWinnings[p.id] || 0;
     }
     return {
       winner: winnerId,
       winnerName,
       scores,
-      chips,
+      potWinnings,
       round: state.round || 1,
     };
   },

@@ -8,7 +8,7 @@ let containerRef = null;
 let seatOrder = [];
 let roRef = null;
 let styleTag = null;
-let cardTheme = 'classic';
+let cardTheme = 'default';
 
 // ── CSS ───────────────────────────────────────────────────────────────────────
 function injectStyles() {
@@ -497,7 +497,7 @@ export function render(container, gameState, socket, playerId, hostPlayerId) {
   socketRef = socket;
   containerRef = container;
   currentGameState = gameState;
-  cardTheme = gameState.card_theme || 'classic';
+  cardTheme = gameState.card_theme || 'default';
 
   buildDOM(container, gameState);
   buildSeats(gameState);
@@ -528,7 +528,7 @@ export function update(gameState, playerId, hostPlayerId) {
   const prev = currentGameState;
   currentGameState = gameState;
 
-  const newTheme = gameState.card_theme || 'classic';
+  const newTheme = gameState.card_theme || 'default';
   if (newTheme !== cardTheme) {
     cardTheme = newTheme;
     buildSeats(gameState);
@@ -558,5 +558,5 @@ export function destroy() {
   if (styleTag) { styleTag.remove(); styleTag = null; }
   if (containerRef) { containerRef.innerHTML = ''; containerRef = null; }
   currentGameState = null; myPlayerId = null; socketRef = null;
-  seatOrder = []; cardTheme = 'classic';
+  seatOrder = []; cardTheme = 'default';
 }

@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 140">
-  <rect width="100" height="140" rx="6" fill="#fafaf8" stroke="#d0d0d0" stroke-width="1"/>
-  <text x="8" y="18" font-family="Arial" font-size="14" font-weight="bold" fill="#cc0000">A</text>
-  <text x="8" y="32" font-family="Arial" font-size="20" fill="#cc0000">♥</text>
-  <text x="50" y="80" font-family="Arial" font-size="40" fill="#cc0000">♥</text>
-  <text x="92" y="128" font-family="Arial" font-size="14" font-weight="bold" fill="#cc0000" transform="rotate(180 92 128)">A</text>
-</svg>

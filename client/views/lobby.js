@@ -1,6 +1,8 @@
 // Lobby view — waiting room, ready-up, chat (gc-* design system)
 import { ChatComponent } from '../components/chat.js';
 
+const DECK_SELECTOR_GAMES = ['blackjack', 'poker'];
+
 export function renderLobby(container, socket, state, navigate) {
   const { lobby, lobbyPlayers } = state;
 
@@ -25,6 +27,11 @@ export function renderLobby(container, socket, state, navigate) {
 
           <div id="bot-fill-banner" class="gc-lobby-bot-banner"></div>
 
+          <div id="deck-selector-wrap" class="gc-deck-selector" style="display:none">
+            <div class="gc-deck-label">YOUR CARD DECK</div>
+            <div class="gc-deck-strip" id="deck-strip"></div>
+          </div>
+
           <div id="players-list" class="gc-lobby-players-list"></div>
           <div id="lobby-error" class="gc-lobby-error"></div>
 
@@ -48,9 +55,14 @@ export function renderLobby(container, socket, state, navigate) {
   const botFillBanner = container.querySelector('#bot-fill-banner');
   const lobbyTitle = container.querySelector('#lobby-title');
   const lobbyBadge = container.querySelector('#lobby-badge');
+  const deckSelectorWrap = container.querySelector('#deck-selector-wrap');
+  const deckStrip = container.querySelector('#deck-strip');
 
   let isReady = false;
   let chat;
+
+  // Check if deck selector should show (blackjack or poker)
+  const showDeckSelector = DECK_SELECTOR_GAMES.includes(lobby?.game_type);
 
   // Fetch game metadata to show bot fill info and correct game label
   fetch('/api/games')
@@ -67,6 +79,44 @@ export function renderLobby(container, socket, state, navigate) {
       }
     })
     .catch(() => {});
+
+  // Load deck selector if game supports it
+  if (showDeckSelector) {
+    fetch('/api/card-themes')
+      .then(r => r.json())
+      .then(themes => {
+        if (!themes || themes.length === 0) return;
+        
+        const savedTheme = localStorage.getItem('gc_card_theme') || 'default';
+        
+        deckStrip.innerHTML = themes.map(t => `
+          <div class="gc-deck-tile${t.id === savedTheme ? ' active' : ''}" data-theme="${t.id}">
+            <div class="gc-deck-preview-pair">
+              <img class="gc-deck-front" src="/cards/${t.id}/HA.svg" height="50" style="border-radius:3px" onerror="this.style.display='none'">
+              <img class="gc-deck-back" src="/cards/${t.id}/DA.svg" height="50" style="border-radius:3px" onerror="this.style.display='none'">
+            </div>
+            <div class="gc-deck-name">${t.name}</div>
+          </div>
+        `).join('');
+
+        deckSelectorWrap.style.display = 'block';
+
+        deckStrip.querySelectorAll('.gc-deck-tile').forEach(tile => {
+          tile.addEventListener('click', () => {
+            const themeId = tile.dataset.theme;
+            deckStrip.querySelectorAll('.gc-deck-tile').forEach(t => t.classList.remove('active'));
+            tile.classList.add('active');
+            localStorage.setItem('gc_card_theme', themeId);
+            fetch('/api/me/card-theme', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ theme: themeId })
+            }).catch(() => {});
+          });
+        });
+      })
+      .catch(() => {});
+  }
 
   function renderPlayers(players) {
     if (!players || players.length === 0) {

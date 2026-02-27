@@ -10,7 +10,7 @@ let containerRef = null;
 let seatOrder = [];
 let roRef = null;
 let styleTag = null;
-let cardTheme = 'classic';
+let cardTheme = 'default';
 let selectedCards = [];       // indices into myHand that are selected
 let challengeTimer = null;    // auto-clear challenge overlay
 
@@ -71,9 +71,9 @@ function injectStyles() {
 const SUIT_LETTER = { '\u2665':'H', '\u2666':'D', '\u2663':'C', '\u2660':'S' };
 
 function cardImageUrl(suit, rank, theme) {
-  return '/cards/' + (theme || 'classic') + '/' + (SUIT_LETTER[suit] || suit) + rank + '.svg';
+  return '/cards/' + (theme || 'default') + '/' + (SUIT_LETTER[suit] || suit) + rank + '.svg';
 }
-function cardBackUrl(theme) { return '/cards/' + (theme || 'classic') + '/back.svg'; }
+function cardBackUrl(theme) { return '/cards/' + (theme || 'default') + '/back.svg'; }
 function getSuitColor(suit) { return (suit === '\u2665' || suit === '\u2666') ? '#cc0000' : '#1a1a1a'; }
 
 function buildCssFallbackFront(frontEl, card) {
@@ -568,7 +568,7 @@ export function render(container, state, socket, playerId, hostPlayerId) {
   socketRef = socket;
   myPlayerId = playerId;
   currentGameState = state;
-  cardTheme = state.card_theme || 'classic';
+  cardTheme = state.card_theme || 'default';
   selectedCards = [];
 
   seatOrder = reorderPlayers(state.players || [], playerId);
@@ -584,7 +584,7 @@ export function update(state, playerId, hostPlayerId) {
   myPlayerId = playerId;
 
   // Theme change → full rebuild
-  const newTheme = state.card_theme || 'classic';
+  const newTheme = state.card_theme || 'default';
   if (newTheme !== cardTheme) {
     cardTheme = newTheme;
     selectedCards = [];
@@ -616,5 +616,5 @@ export function destroy() {
   containerRef = null;
   seatOrder = [];
   selectedCards = [];
-  cardTheme = 'classic';
+  cardTheme = 'default';
 }

@@ -35,6 +35,16 @@ function migrate() {
     // Column already exists, ignore
   }
 
+  // Add last_chip_reset column if it doesn't exist
+  try {
+    db.exec("ALTER TABLE players ADD COLUMN last_chip_reset INTEGER DEFAULT 0");
+  } catch (e) {}
+
+  // Add preferred_card_theme column if it doesn't exist
+  try {
+    db.exec("ALTER TABLE players ADD COLUMN preferred_card_theme TEXT DEFAULT 'classic'");
+  } catch (e) {}
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS groups_table (
       id TEXT PRIMARY KEY,
@@ -166,6 +176,17 @@ function migrate() {
       played_at    INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_mp_stats_player ON mp_game_stats(player_id, game_type);
+
+    CREATE TABLE IF NOT EXISTS chip_transactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      player_id TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      reason TEXT NOT NULL,
+      game_type TEXT,
+      lobby_id TEXT,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_chip_trans_player ON chip_transactions(player_id, created_at);
   `);
 
   // Add new lobbies columns for existing databases (idempotent — throws if already present)
@@ -180,6 +201,7 @@ function migrate() {
   `);
   seedGames.run('blackjack', 'Blackjack', 1, 6);
   seedGames.run('bs', 'BS', 2, 6);
+  seedGames.run('poker', 'Poker', 2, 9);
 
   // Remove deprecated game types (idempotent DELETEs)
   for (const gt of ['highest-card', 'game_night']) {

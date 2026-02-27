@@ -282,11 +282,36 @@ function finishGame(io, sessionId) {
   const session = activeSessions.get(sessionId);
   if (!session) return;
 
-  const { module: mod, state } = session;
-  const summary = mod.getRoundSummary(state);
+  const { module: mod, state, config, lobbyId } = session;
+  const summary = mod.getRoundSummary ? mod.getRoundSummary(state) : {};
   const scores = summary.scores || {};
 
   db.prepare("UPDATE game_sessions SET ended_at = datetime('now') WHERE id = ?").run(sessionId);
+
+  // Chip settlement for chip games (blackjack, poker)
+  const chipGames = ['blackjack', 'poker'];
+  if (chipGames.includes(session.gameType) && config) {
+    const buyIn = config.buyIn || config.startingChips || 0;
+    if (buyIn > 0) {
+      for (const p of session.players) {
+        if (p.is_bot) continue; // Skip bots
+        
+        const player = db.prepare('SELECT chips FROM players WHERE id = ?').get(p.id);
+        if (!player) continue;
+
+        const finalChips = scores[p.id] || 0;
+        const net = finalChips - buyIn;
+        
+        if (net !== 0) {
+          db.prepare('UPDATE players SET chips = chips + ? WHERE id = ?').run(net, p.id);
+          db.prepare(`
+            INSERT INTO chip_transactions (player_id, amount, reason, game_type, lobby_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `).run(p.id, net, net > 0 ? 'game_win' : 'game_loss', session.gameType, lobbyId, Date.now());
+        }
+      }
+    }
+  }
 
   // Derive placements from scores for human players only (bots not recorded in DB)
   const humanPlayers = session.players.filter(p => !p.is_bot);
@@ -310,6 +335,15 @@ function finishGame(io, sessionId) {
       score,
     };
   });
+
+  // Emit chip updates to players
+  for (const p of session.players) {
+    if (p.is_bot) continue;
+    const updated = db.prepare('SELECT chips FROM players WHERE id = ?').get(p.id);
+    for (const s of findSocketsByPlayerId(io, p.id)) {
+      s.emit('server:chips_updated', { chips: updated?.chips ?? 0 });
+    }
+  }
 
   io.to(`session:${sessionId}`).emit('server:game_over', {
     results,

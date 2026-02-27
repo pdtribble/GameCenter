@@ -1,10 +1,10 @@
 // Multiplayer home view — game-selection grid → lobby panel flow
-import { setGuestMode } from '../app.js';
+import { setGuestMode, updateChipDisplay } from '../app.js';
 
 // ── Accent colors per game type ───────────────────────────────────────────────
 const GAME_ACCENTS = {
   'blackjack':    '#30d890',
-  'poker':        '#30d890',
+  'poker':        '#d4af37',
   'bs':           '#ff4560',
 };
 
@@ -285,7 +285,10 @@ export function renderHome(container, socket, state, navigate) {
     .then(r => r.json())
     .then(data => {
       setGuestMode(data.isGuest === true);
-      if (data.loggedIn) playerDisplayName = data.displayName || '';
+      if (data.loggedIn) {
+        playerDisplayName = data.displayName || '';
+        updateChipDisplay(data.chips || 0);
+      }
     })
     .catch(() => {});
 

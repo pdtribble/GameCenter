@@ -224,6 +224,15 @@ export function renderSingleplayer(container, socket, state, navigate) {
         stats:  tetrisStats,
         formatStats: (s) => s?.highScore != null ? `<span>best <span style="color:var(--gc-gold,#f0c040)">${s.highScore}</span></span>` : '',
       },
+      {
+        id:     'poker',
+        name:   'Poker',
+        icon:   '♠️',
+        desc:   "Texas Hold'em vs bots. No buy-in for SP mode.",
+        accent: '#d4af37',
+        stats:  null,
+        formatStats: () => '',
+      },
     ];
 
     for (const g of games) {

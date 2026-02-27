@@ -200,6 +200,24 @@ function handleJoin(socket, io, data) {
   const gameReg = db.prepare('SELECT * FROM game_registry WHERE game_type = ?').get(lobby.game_type);
   const playerCount = db.prepare("SELECT COUNT(*) as c FROM lobby_players WHERE lobby_id = ? AND role != 'spectator'").get(lobby.id).c;
 
+  // Handle buy-in for games that use it (blackjack, poker - NOT bs, bs uses per-round entry fee)
+  const lobbySettings = JSON.parse(lobby.settings || '{}');
+  const buyIn = lobbySettings.buyIn || lobbySettings.startingChips || 0;
+  const chipGames = ['blackjack', 'poker'];
+  if (buyIn > 0 && chipGames.includes(lobby.game_type) && role !== 'spectator') {
+    const currentChips = db.prepare('SELECT chips FROM players WHERE id = ?').get(player.id)?.chips || 0;
+    if (currentChips < buyIn) {
+      return socket.emit('server:error', { code: 'INSUFFICIENT_CHIPS', message: `Need ${buyIn} chips to join (you have ${currentChips})` });
+    }
+    db.prepare('UPDATE players SET chips = chips - ? WHERE id = ?').run(buyIn, player.id);
+    db.prepare(`
+      INSERT INTO chip_transactions (player_id, amount, reason, game_type, lobby_id, created_at)
+      VALUES (?, ?, 'buyin', ?, ?, ?)
+    `).run(player.id, -buyIn, lobby.game_type, lobby.id, Date.now());
+  }
+
+  // BS uses per-round entry fee, handled in game logic (not deducted on join)
+
   if (!asSpectator && playerCount >= gameReg.max_players) {
     return socket.emit('server:error', { code: 'LOBBY_FULL', message: 'Lobby is full.' });
   }
@@ -403,6 +421,18 @@ function handleLeave(socket, io, data) {
 
   const lobby = getLobby(lobbyId);
   if (!lobby || lobby.status !== 'waiting') return;
+
+  // Refund buy-in if applicable
+  const lobbySettings = JSON.parse(lobby.settings || '{}');
+  const buyIn = lobbySettings.buyIn || lobbySettings.startingChips || 0;
+  const chipGames = ['blackjack', 'poker'];
+  if (buyIn > 0 && chipGames.includes(lobby.game_type)) {
+    db.prepare('UPDATE players SET chips = chips + ? WHERE id = ?').run(buyIn, socket.playerId);
+    db.prepare(`
+      INSERT INTO chip_transactions (player_id, amount, reason, game_type, lobby_id, created_at)
+      VALUES (?, ?, 'buyin_refund', ?, ?, ?)
+    `).run(socket.playerId, buyIn, lobby.game_type, lobby.id, Date.now());
+  }
 
   db.prepare('DELETE FROM lobby_players WHERE lobby_id = ? AND player_id = ?')
     .run(lobbyId, socket.playerId);

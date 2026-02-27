@@ -14,7 +14,7 @@ let roRef = null;
 let styleTag = null;
 let betChips = [];
 let betAmount = 0;
-let cardTheme = 'classic';
+let cardTheme = 'default';
 
 // ── CSS injection ────────────────────────────────────────────────────────────
 function injectStyles() {
@@ -989,7 +989,7 @@ export function render(container, gameState, socket, playerId, hostPlayerId) {
   containerRef = container;
   currentGameState = gameState;
   lastRound = gameState.round || 0;
-  cardTheme = gameState.card_theme || 'classic';
+  cardTheme = gameState.card_theme || 'default';
 
   buildDOM(container, gameState);
 
@@ -1032,7 +1032,7 @@ export function update(gameState, playerId, hostPlayerId) {
   currentGameState = gameState;
 
   // Theme change — rebuild all cards
-  const newTheme = gameState.card_theme || 'classic';
+  const newTheme = gameState.card_theme || 'default';
   if (newTheme !== cardTheme) {
     cardTheme = newTheme;
     buildSeats(gameState);
@@ -1068,5 +1068,5 @@ export function destroy() {
   document.querySelectorAll('.bj-card[style*="position: fixed"], .bj-card[style*="position:fixed"]').forEach(function(el) { el.remove(); });
   if (containerRef) { containerRef.innerHTML = ''; containerRef = null; }
   currentGameState = null; myPlayerId = null; socketRef = null;
-  seatOrder = []; lastRound = 0; betChips = []; betAmount = 0; cardTheme = 'classic';
+  seatOrder = []; lastRound = 0; betChips = []; betAmount = 0; cardTheme = 'default';
 }

@@ -12,6 +12,7 @@ import { renderWordle } from './views/wordle.js';
 import { renderSudoku } from './views/sudoku.js';
 import { renderPacman } from './views/pacman.js';
 import { renderTetris } from './views/tetris.js';
+import { renderPoker } from './views/poker.js';
 
 // ── Scale layout system ───────────────────────────────────────────────────────
 const LANDSCAPE_W = 1280, LANDSCAPE_H = 720;
@@ -51,19 +52,37 @@ export function isPortrait() {
 
 // ── Guest mode indicator ───────────────────────────────────────────────────────
 let guestMode = false;
+let chipBalance = null;
 
 export function setGuestMode(isGuest) {
   guestMode = !!isGuest;
   const tab = document.querySelector('#bottom-nav .nav-tab[data-view="profile"]');
   if (!tab) return;
   tab.querySelector('.nav-guest-dot')?.remove();
+  tab.querySelector('.nav-chip-balance')?.remove();
   if (guestMode) {
     const dot = document.createElement('span');
     dot.className = 'nav-guest-dot';
     dot.style.cssText = 'display:block;font-size:7px;color:rgba(168,255,168,0.3);font-family:monospace;letter-spacing:1px;line-height:1;margin-top:1px';
     dot.textContent = 'GUEST';
     tab.appendChild(dot);
+  } else if (chipBalance !== null) {
+    updateChipDisplay();
   }
+}
+
+export function updateChipDisplay(balance) {
+  if (balance !== undefined) chipBalance = balance;
+  if (guestMode || chipBalance === null) return;
+  const tab = document.querySelector('#bottom-nav .nav-tab[data-view="profile"]');
+  if (!tab) return;
+  tab.querySelector('.nav-chip-balance')?.remove();
+  const chipEl = document.createElement('span');
+  chipEl.className = 'nav-chip-balance';
+  chipEl.style.cssText = 'display:block;font-size:7px;color:rgba(57,255,20,0.5);font-family:monospace;letter-spacing:1px;line-height:1;margin-top:1px';
+  chipEl.textContent = '🪙 ' + chipBalance.toLocaleString();
+  tab.querySelector('.nav-guest-dot')?.remove();
+  tab.appendChild(chipEl);
 }
 
 // ── Nav visibility ────────────────────────────────────────────────────────────
@@ -80,7 +99,7 @@ export function showNav() {
 }
 
 // Views that get the full screen (bottom nav hidden)
-const FULLSCREEN_VIEWS = new Set(['game', 'minesweeper', 'snake', '2048', 'wordle', 'sudoku', 'pacman', 'tetris', 'lobby', 'postgame']);
+const FULLSCREEN_VIEWS = new Set(['game', 'minesweeper', 'snake', '2048', 'wordle', 'sudoku', 'pacman', 'tetris', 'poker', 'lobby', 'postgame']);
 
 // Top-level tabs and which view each maps to
 const TOP_LEVEL = { home: 'home', singleplayer: 'singleplayer', profile: 'profile' };
@@ -90,7 +109,7 @@ function updateBottomNav(view) {
     const tabView = btn.dataset.view;
     const isActive = tabView === view ||
       (tabView === 'home' && (view === 'lobby' || view === 'postgame')) ||
-      (tabView === 'singleplayer' && (view === 'minesweeper' || view === 'snake' || view === '2048' || view === 'wordle' || view === 'sudoku' || view === 'pacman' || view === 'tetris'));
+      (tabView === 'singleplayer' && (view === 'minesweeper' || view === 'snake' || view === '2048' || view === 'wordle' || view === 'sudoku' || view === 'pacman' || view === 'tetris' || view === 'poker'));
     btn.classList.toggle('active', isActive);
   });
 }
@@ -138,6 +157,7 @@ function navigate(view, data = {}) {
     case 'sudoku':       currentView = renderSudoku(app, socket, state, navigate); break;
     case 'pacman':       currentView = renderPacman(app, socket, state, navigate); break;
     case 'tetris':       currentView = renderTetris(app, socket, state, navigate); break;
+    case 'poker':        currentView = renderPoker(app, socket, state, navigate); break;
     default:             app.innerHTML = '<p style="padding:2rem;color:#fff">Unknown view.</p>';
   }
 }
