@@ -121,11 +121,17 @@ export function renderSingleplayer(container, socket, state, navigate) {
   const sudokuSavesP = playerId
     ? fetch('/api/sp/saves/sudoku').then(r => r.ok ? r.json() : []).catch(() => [])
     : Promise.resolve([]);
+  const pacmanSavesP = playerId
+    ? fetch('/api/sp/saves/pacman').then(r => r.ok ? r.json() : []).catch(() => [])
+    : Promise.resolve([]);
+  const tetrisSavesP = playerId
+    ? fetch('/api/sp/saves/tetris').then(r => r.ok ? r.json() : []).catch(() => [])
+    : Promise.resolve([]);
 
   // Check if guest (to show progress warning)
   const statsApiP = fetch('/api/me/stats').then(r => r.json()).catch(() => null);
 
-  Promise.all([msStatsP, snakeSavesP, t48SavesP, wordleSavesP, sudokuSavesP, statsApiP]).then(([msStats, snakeSaves, t48Saves, wordleSaves, sudokuSaves, meStats]) => {
+  Promise.all([msStatsP, snakeSavesP, t48SavesP, wordleSavesP, sudokuSavesP, pacmanSavesP, tetrisSavesP, statsApiP]).then(([msStats, snakeSaves, t48Saves, wordleSaves, sudokuSaves, pacmanSaves, tetrisSaves, meStats]) => {
     const snakeStats = (() => {
       const hs = snakeSaves.find(s => s.slot === 'highscore');
       return hs?.data?.highScore != null ? { highScore: hs.data.highScore } : null;
@@ -143,6 +149,14 @@ export function renderSingleplayer(container, socket, state, navigate) {
     const sudokuStats = (() => {
       const save = sudokuSaves.find(s => s.slot === 'autosave');
       return save?.data?.phase === 'won' ? { wins: 1 } : null;
+    })();
+    const pacmanStats = (() => {
+      const hs = pacmanSaves.find(s => s.slot === 'highscore');
+      return hs?.data?.highScore != null ? { highScore: hs.data.highScore } : null;
+    })();
+    const tetrisStats = (() => {
+      const hs = tetrisSaves.find(s => s.slot === 'highscore');
+      return hs?.data?.highScore != null ? { highScore: hs.data.highScore } : null;
     })();
     const isGuest = meStats?.isGuest === true;
     grid.innerHTML = '';
@@ -191,6 +205,24 @@ export function renderSingleplayer(container, socket, state, navigate) {
         accent: '#58a6ff',
         stats:  sudokuStats,
         formatStats: (s) => s?.wins != null ? `<span><span style="color:var(--gc-gold,#f0c040)">${s.wins}</span> solved</span>` : '',
+      },
+      {
+        id:     'pacman',
+        name:   'Pac-Man',
+        icon:   '👾',
+        desc:   'Eat dots, dodge ghosts. Classic arcade action.',
+        accent: '#ffcc00',
+        stats:  pacmanStats,
+        formatStats: (s) => s?.highScore != null ? `<span>best <span style="color:var(--gc-gold,#f0c040)">${s.highScore}</span></span>` : '',
+      },
+      {
+        id:     'tetris',
+        name:   'Tetris',
+        icon:   '🟦',
+        desc:   'Stack blocks, clear lines. How high can you score?',
+        accent: '#00ccff',
+        stats:  tetrisStats,
+        formatStats: (s) => s?.highScore != null ? `<span>best <span style="color:var(--gc-gold,#f0c040)">${s.highScore}</span></span>` : '',
       },
     ];
 
