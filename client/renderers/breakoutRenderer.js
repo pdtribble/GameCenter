@@ -207,7 +207,7 @@ function updateParticles() {
   });
 }
 
-function render() {
+function drawFrame() {
   if (!ctx || !state) return;
   
   const w = canvasEl.width;
@@ -341,7 +341,7 @@ function gameLoop() {
   }
   
   // Render
-  render();
+  drawFrame();
   
   // Check game over
   if (state.phase === 'lost') {
@@ -397,7 +397,7 @@ function showOverlay(overlayType) {
       state.highScore = highScore;
       state.phase = 'ready';
       overlay.classList.add('hidden');
-      render();
+      drawFrame();
     });
   }
 }
@@ -471,7 +471,7 @@ export function render(container, options) {
   document.addEventListener('keydown', handleKeyDown);
   document.addEventListener('keyup', handleKeyUp);
   
-  render();
+  drawFrame();
   showOverlay('ready');
 }
 
