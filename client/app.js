@@ -8,6 +8,8 @@ import { renderSingleplayer } from './views/singleplayer.js';
 import { renderMinesweeper } from './views/minesweeper.js';
 import { renderSnake } from './views/snake.js';
 import { render2048 } from './views/2048.js';
+import { renderWordle } from './views/wordle.js';
+import { renderSudoku } from './views/sudoku.js';
 
 // ── Scale layout system ───────────────────────────────────────────────────────
 const LANDSCAPE_W = 1280, LANDSCAPE_H = 720;
@@ -76,7 +78,7 @@ export function showNav() {
 }
 
 // Views that get the full screen (bottom nav hidden)
-const FULLSCREEN_VIEWS = new Set(['game', 'minesweeper', 'snake', '2048', 'lobby', 'postgame']);
+const FULLSCREEN_VIEWS = new Set(['game', 'minesweeper', 'snake', '2048', 'wordle', 'sudoku', 'lobby', 'postgame']);
 
 // Top-level tabs and which view each maps to
 const TOP_LEVEL = { home: 'home', singleplayer: 'singleplayer', profile: 'profile' };
@@ -86,7 +88,7 @@ function updateBottomNav(view) {
     const tabView = btn.dataset.view;
     const isActive = tabView === view ||
       (tabView === 'home' && (view === 'lobby' || view === 'postgame')) ||
-      (tabView === 'singleplayer' && (view === 'minesweeper' || view === 'snake' || view === '2048'));
+      (tabView === 'singleplayer' && (view === 'minesweeper' || view === 'snake' || view === '2048' || view === 'wordle' || view === 'sudoku'));
     btn.classList.toggle('active', isActive);
   });
 }
@@ -130,6 +132,8 @@ function navigate(view, data = {}) {
     case 'minesweeper':  currentView = renderMinesweeper(app, socket, state, navigate, data); break;
     case 'snake':        currentView = renderSnake(app, socket, state, navigate); break;
     case '2048':         currentView = render2048(app, socket, state, navigate); break;
+    case 'wordle':       currentView = renderWordle(app, socket, state, navigate); break;
+    case 'sudoku':       currentView = renderSudoku(app, socket, state, navigate); break;
     default:             app.innerHTML = '<p style="padding:2rem;color:#fff">Unknown view.</p>';
   }
 }

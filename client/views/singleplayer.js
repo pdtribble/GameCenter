@@ -115,11 +115,17 @@ export function renderSingleplayer(container, socket, state, navigate) {
   const t48SavesP = playerId
     ? fetch('/api/sp/saves/2048').then(r => r.ok ? r.json() : []).catch(() => [])
     : Promise.resolve([]);
+  const wordleSavesP = playerId
+    ? fetch('/api/sp/saves/wordle').then(r => r.ok ? r.json() : []).catch(() => [])
+    : Promise.resolve([]);
+  const sudokuSavesP = playerId
+    ? fetch('/api/sp/saves/sudoku').then(r => r.ok ? r.json() : []).catch(() => [])
+    : Promise.resolve([]);
 
   // Check if guest (to show progress warning)
   const statsApiP = fetch('/api/me/stats').then(r => r.json()).catch(() => null);
 
-  Promise.all([msStatsP, snakeSavesP, t48SavesP, statsApiP]).then(([msStats, snakeSaves, t48Saves, meStats]) => {
+  Promise.all([msStatsP, snakeSavesP, t48SavesP, wordleSavesP, sudokuSavesP, statsApiP]).then(([msStats, snakeSaves, t48Saves, wordleSaves, sudokuSaves, meStats]) => {
     const snakeStats = (() => {
       const hs = snakeSaves.find(s => s.slot === 'highscore');
       return hs?.data?.highScore != null ? { highScore: hs.data.highScore } : null;
@@ -127,6 +133,16 @@ export function renderSingleplayer(container, socket, state, navigate) {
     const t48Stats = (() => {
       const best = t48Saves.find(s => s.slot === 'best');
       return best?.data?.best != null ? { best: best.data.best } : null;
+    })();
+    const wordleStats = (() => {
+      const daily = wordleSaves.find(s => s.slot === 'dailySave');
+      const free = wordleSaves.find(s => s.slot === 'freeSave');
+      const wins = (daily?.data?.phase === 'won' ? 1 : 0) + (free?.data?.phase === 'won' ? 1 : 0);
+      return wins > 0 ? { wins } : null;
+    })();
+    const sudokuStats = (() => {
+      const save = sudokuSaves.find(s => s.slot === 'autosave');
+      return save?.data?.phase === 'won' ? { wins: 1 } : null;
     })();
     const isGuest = meStats?.isGuest === true;
     grid.innerHTML = '';
@@ -157,6 +173,24 @@ export function renderSingleplayer(container, socket, state, navigate) {
         accent: '#39ff14',
         stats:  t48Stats,
         formatStats: (s) => s?.best != null ? `<span>best <span style="color:var(--gc-gold,#f0c040)">${s.best}</span></span>` : '',
+      },
+      {
+        id:     'wordle',
+        name:   'Wordle',
+        icon:   '📝',
+        desc:   'Daily word puzzle + Free Play. Guess the word in 6 tries.',
+        accent: '#538d4e',
+        stats:  wordleStats,
+        formatStats: (s) => s?.wins != null ? `<span><span style="color:var(--gc-gold,#f0c040)">${s.wins}</span> wins</span>` : '',
+      },
+      {
+        id:     'sudoku',
+        name:   'Sudoku',
+        icon:   '🧩',
+        desc:   'Classic number puzzle. Easy, Medium, Hard difficulties.',
+        accent: '#58a6ff',
+        stats:  sudokuStats,
+        formatStats: (s) => s?.wins != null ? `<span><span style="color:var(--gc-gold,#f0c040)">${s.wins}</span> solved</span>` : '',
       },
     ];
 

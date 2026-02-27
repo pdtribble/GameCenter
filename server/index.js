@@ -63,6 +63,7 @@ app.use((req, res, next) => {
 
 // ── Static files ──────────────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, '..', 'client')));
+app.use('/data', express.static(path.join(__dirname, '..', 'public', 'data')));
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use('/', authRouter);
