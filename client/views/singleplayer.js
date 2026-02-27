@@ -225,6 +225,15 @@ export function renderSingleplayer(container, socket, state, navigate) {
         stats:  tetrisStats,
         formatStats: (s) => s?.highScore != null ? `<span>best <span style="color:var(--gc-gold,#f0c040)">${s.highScore}</span></span>` : '',
       },
+      {
+        id:     'treasure-tower',
+        name:   'Treasure Tower',
+        icon:   '🏰',
+        desc:   'Climb the tower, choose wisely. Gamble your chips!',
+        accent: '#f0c040',
+        stats:  null,
+        formatStats: (s) => '',
+      },
     ];
 
     for (const g of games) {

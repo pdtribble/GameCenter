@@ -13,6 +13,7 @@ import { renderSudoku } from './views/sudoku.js';
 import { renderPacman } from './views/pacman.js';
 import { renderTetris } from './views/tetris.js';
 import { renderPoker } from './views/poker.js';
+import { renderTreasureTower } from './views/treasure-tower.js';
 
 // ── Scale layout system ───────────────────────────────────────────────────────
 const LANDSCAPE_W = 1280, LANDSCAPE_H = 720;
@@ -84,7 +85,7 @@ export function showNav() {
 }
 
 // Views that get the full screen (bottom nav hidden)
-const FULLSCREEN_VIEWS = new Set(['game', 'minesweeper', 'snake', '2048', 'wordle', 'sudoku', 'pacman', 'tetris', 'poker', 'lobby', 'postgame']);
+const FULLSCREEN_VIEWS = new Set(['game', 'minesweeper', 'snake', '2048', 'wordle', 'sudoku', 'pacman', 'tetris', 'poker', 'lobby', 'postgame', 'treasure-tower']);
 
 // Top-level tabs and which view each maps to
 const TOP_LEVEL = { home: 'home', singleplayer: 'singleplayer', profile: 'profile' };
@@ -94,7 +95,7 @@ function updateBottomNav(view) {
     const tabView = btn.dataset.view;
     const isActive = tabView === view ||
       (tabView === 'home' && (view === 'lobby' || view === 'postgame')) ||
-      (tabView === 'singleplayer' && (view === 'minesweeper' || view === 'snake' || view === '2048' || view === 'wordle' || view === 'sudoku' || view === 'pacman' || view === 'tetris' || view === 'poker'));
+      (tabView === 'singleplayer' && (view === 'minesweeper' || view === 'snake' || view === '2048' || view === 'wordle' || view === 'sudoku' || view === 'pacman' || view === 'tetris' || view === 'poker' || view === 'treasure-tower'));
     btn.classList.toggle('active', isActive);
   });
 }
@@ -143,6 +144,7 @@ function navigate(view, data = {}) {
     case 'pacman':       currentView = renderPacman(app, socket, state, navigate); break;
     case 'tetris':       currentView = renderTetris(app, socket, state, navigate); break;
     case 'poker':        currentView = renderPoker(app, socket, state, navigate); break;
+    case 'treasure-tower': currentView = renderTreasureTower(app, socket, state, navigate); break;
     default:             app.innerHTML = '<p style="padding:2rem;color:#fff">Unknown view.</p>';
   }
 }

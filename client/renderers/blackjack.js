@@ -18,6 +18,9 @@ let cardTheme = 'default';
 let sitOutNextRound = false;
 let roundEndCountdown = null;
 let roundEndInterval = null;
+let isPaused = false;
+let pausedCountdownRemaining = null;
+let flyingCardTimeouts = [];
 
 // ── CSS injection ────────────────────────────────────────────────────────────
 function injectStyles() {
@@ -101,10 +104,23 @@ function injectStyles() {
   content: ''; position: absolute; inset: 10px; border-radius: 50%;
   border: 2px solid rgba(212,175,55,0.35); pointer-events: none; z-index: 1;
 }
-#bj-action-bar { transition: transform 0.2s ease, opacity 0.2s ease; }
-#bj-action-bar.bj-hidden { transform: translateY(20px); opacity: 0; pointer-events: none; }
-#bj-chip-tray { transition: transform 0.2s ease, opacity 0.2s ease; }
-#bj-chip-tray.bj-hidden { transform: translateY(20px); opacity: 0; pointer-events: none; }
+#bj-action-buttons { transition: transform 0.2s ease, opacity 0.2s ease; display:flex; gap:10px; justify-content:center; align-items:center; flex:1; }
+#bj-action-buttons.bj-hidden { transform: translateY(20px); opacity: 0; pointer-events: none; }
+#bj-chip-tray-wrap { flex-direction:column; align-items:center; gap:8px; padding:6px 10px; }
+#bj-bet-display { display:flex; align-items:center; gap:8px; font-family:monospace; }
+#bj-bet-label { font-size:10px; letter-spacing:2px; color:rgba(168,255,168,0.5); }
+#bj-bet-value { font-size:20px; font-weight:bold; color:var(--gc-green,#39ff14); min-width:48px; text-align:center; }
+#bj-bet-clear { font-size:10px; padding:2px 7px; border-radius:4px; border:1px solid rgba(168,255,168,0.2); background:transparent; color:rgba(168,255,168,0.4); cursor:pointer; font-family:monospace; }
+#bj-chips { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; max-width:320px; }
+#bj-deal-btn { padding:8px 28px; border-radius:6px; font-family:monospace; font-size:11px; letter-spacing:3px; font-weight:bold; transition:all 0.15s ease; cursor:pointer; }
+#bj-deal-btn:not(:disabled) { border:1px solid var(--gc-green,#39ff14); background:rgba(57,255,20,0.1); color:var(--gc-green,#39ff14); }
+#bj-deal-btn:not(:disabled):hover { background:rgba(57,255,20,0.2); box-shadow:0 0 16px rgba(57,255,20,0.2); }
+#bj-deal-btn:disabled { border:1px solid rgba(168,255,168,0.15); background:transparent; color:rgba(168,255,168,0.2); cursor:not-allowed; }
+.bj-chip { width:48px; height:48px; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; font-family:monospace; font-weight:bold; font-size:11px; transition:transform 0.1s, box-shadow 0.1s; border-width:3px; border-style:solid; position:relative; user-select:none; }
+.bj-chip::after { content:''; position:absolute; inset:4px; border-radius:50%; border:1px dashed rgba(255,255,255,0.25); pointer-events:none; }
+.bj-chip:hover { transform:scale(1.1); box-shadow:0 4px 14px rgba(0,0,0,0.5); }
+.bj-chip:active { transform:scale(0.93); }
+.bj-chip-label { color:#fff; text-shadow:0 1px 3px rgba(0,0,0,0.9); pointer-events:none; }
 #bj-sitout-btn {
   position: absolute; bottom: 16px; right: 16px;
   font-family: 'DM Mono', 'Courier New', monospace; font-size: 10px;
@@ -402,7 +418,7 @@ function buildDOM(container, state) {
   // Scene
   const scene = document.createElement('div');
   scene.id = 'bj-scene';
-  scene.style.cssText = 'position:relative;display:flex;align-items:flex-start;justify-content:center;flex:1;width:100%;overflow:visible;';
+  scene.style.cssText = 'position:relative;display:flex;align-items:flex-start;justify-content:center;flex:1;min-height:0;width:100%;overflow:visible;';
 
   // Table
   const table = document.createElement('div');
@@ -438,19 +454,24 @@ function buildDOM(container, state) {
   scene.appendChild(table);
   container.appendChild(scene);
 
-  // Action bar
+  // Action bar — contains chip-tray-wrap (left) + action-buttons (right)
   const actionBar = document.createElement('div');
   actionBar.id = 'bj-action-bar';
-  actionBar.className = 'bj-hidden';
-  actionBar.style.cssText = 'width:min(90vw,900px);display:flex;gap:10px;justify-content:center;padding:8px 0;min-height:50px;flex-shrink:0;';
-  container.appendChild(actionBar);
+  actionBar.style.cssText = 'width:min(90vw,900px);display:flex;align-items:center;padding:6px 0;min-height:60px;flex-shrink:0;';
 
-  // Chip tray
-  const chipTray = document.createElement('div');
-  chipTray.id = 'bj-chip-tray';
-  chipTray.className = 'bj-hidden';
-  chipTray.style.cssText = 'width:min(90vw,900px);background:rgba(0,0,0,0.85);border-top:1px solid rgba(212,175,55,0.25);border-radius:0 0 12px 12px;padding:10px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex-shrink:0;';
-  container.appendChild(chipTray);
+  // Chip tray wrap (left side, hidden except during betting phase)
+  const chipTrayWrap = document.createElement('div');
+  chipTrayWrap.id = 'bj-chip-tray-wrap';
+  chipTrayWrap.style.display = 'none';
+  actionBar.appendChild(chipTrayWrap);
+
+  // Action buttons (right side, hidden when not player's turn)
+  const actionButtons = document.createElement('div');
+  actionButtons.id = 'bj-action-buttons';
+  actionButtons.className = 'bj-hidden';
+  actionBar.appendChild(actionButtons);
+
+  container.appendChild(actionBar);
 
   wireEvents();
 }
@@ -483,36 +504,14 @@ function wireEvents() {
       muteBtn.textContent = muted ? '\uD83D\uDD0A' : '\uD83D\uDD07';
     });
   }
-  const actionBar = document.getElementById('bj-action-bar');
-  if (actionBar) {
-    actionBar.addEventListener('click', function(e) {
+  const actionButtons = document.getElementById('bj-action-buttons');
+  if (actionButtons) {
+    actionButtons.addEventListener('click', function(e) {
       const btn = e.target.closest('[data-action]');
       if (!btn || btn.disabled) return;
       const type = btn.dataset.action;
       socketRef.emit('game:action', { sessionId: socketRef.currentSessionId, action: { type } });
-      actionBar.querySelectorAll('button').forEach(function(b) { b.disabled = true; b.style.opacity = '0.5'; });
-    });
-  }
-  const chipTray = document.getElementById('bj-chip-tray');
-  if (chipTray) {
-    chipTray.addEventListener('click', function(e) {
-      const chip = e.target.closest('[data-chip-value]');
-      if (chip) {
-        const val = parseInt(chip.dataset.chipValue, 10);
-        const me = currentGameState && currentGameState.players && currentGameState.players.find(function(p) { return p.id === myPlayerId; });
-        if (me && betAmount + val <= (me.chips || 0)) {
-          betAmount += val; betChips.push(val); sfx.chip(); updateChipTrayDisplay();
-        }
-        return;
-      }
-      const betBtn = e.target.closest('#bj-bet-btn');
-      if (betBtn && betAmount > 0) {
-        socketRef.emit('game:action', { sessionId: socketRef.currentSessionId, action: { type: 'place_bet', amount: betAmount } });
-        betBtn.disabled = true;
-        return;
-      }
-      const clearBet = e.target.closest('#bj-clear-bet');
-      if (clearBet) { betAmount = 0; betChips = []; updateChipTrayDisplay(); }
+      actionButtons.querySelectorAll('button').forEach(function(b) { b.disabled = true; b.style.opacity = '0.5'; });
     });
   }
 }
@@ -688,7 +687,7 @@ function dealCard(cardEl, destContainer, cardIndex, delay, isSmall) {
   cardEl.style.zIndex = '9999';
   cardEl.style.transition = 'none';
   document.body.appendChild(cardEl);
-  setTimeout(function() {
+  const outerId = setTimeout(function() {
     requestAnimationFrame(function() {
       requestAnimationFrame(function() {
         const dr = destContainer.getBoundingClientRect();
@@ -697,7 +696,7 @@ function dealCard(cardEl, destContainer, cardIndex, delay, isSmall) {
         cardEl.style.transition = 'all 0.32s cubic-bezier(0.25,0.46,0.45,0.94)';
         cardEl.style.left = (dr.left + offsetPx) + 'px';
         cardEl.style.top = dr.top + 'px';
-        setTimeout(function() {
+        const innerId = setTimeout(function() {
           if (!cardEl.parentNode || cardEl.parentNode !== document.body) return;
           const offsetStr = isSmall ? 'clamp(12px,1.6vw,18px)' : 'clamp(22px,3vw,32px)';
           cardEl.style.position = 'absolute';
@@ -707,14 +706,16 @@ function dealCard(cardEl, destContainer, cardIndex, delay, isSmall) {
           cardEl.style.transition = '';
           destContainer.appendChild(cardEl);
         }, 340);
+        flyingCardTimeouts.push(innerId);
       });
     });
   }, delay);
+  flyingCardTimeouts.push(outerId);
 }
 
 // ── Action buttons ────────────────────────────────────────────────────────────
 function updateActionButtons() {
-  const bar = document.getElementById('bj-action-bar');
+  const bar = document.getElementById('bj-action-buttons');
   if (!bar || !currentGameState) return;
   const gs = currentGameState;
   const me = gs.players && gs.players.find(function(p) { return p.id === myPlayerId; });
@@ -916,139 +917,253 @@ function updateHUD(state) {
 }
 
 // ── Chip tray ─────────────────────────────────────────────────────────────────
-const CHIP_DENOMS = [
-  { value: 1,    bg: 'radial-gradient(circle at 35% 35%,#f0f0f0,#909090)', border: '#777',    color: '#333' },
-  { value: 5,    bg: 'radial-gradient(circle at 35% 35%,#ff6666,#cc0000)', border: '#990000', color: 'white' },
-  { value: 25,   bg: 'radial-gradient(circle at 35% 35%,#66dd66,#228822)', border: '#116611', color: 'white' },
-  { value: 100,  bg: 'radial-gradient(circle at 35% 35%,#666,#111)',       border: '#888',    color: 'white' },
-  { value: 500,  bg: 'radial-gradient(circle at 35% 35%,#cc77ff,#6600cc)', border: '#4400aa', color: 'white' },
-  { value: 1000, bg: 'radial-gradient(circle at 35% 35%,#ffee44,#cc9900)', border: '#aa7700', color: '#333' },
-];
+const CHIP_STYLE = {
+  1:    { border: '#888',    bg: 'radial-gradient(circle,#555,#333)' },
+  5:    { border: '#e05555', bg: 'radial-gradient(circle,#a02020,#601010)' },
+  10:   { border: '#5588ff', bg: 'radial-gradient(circle,#2244bb,#102266)' },
+  25:   { border: '#55cc55', bg: 'radial-gradient(circle,#228822,#114411)' },
+  50:   { border: '#dd9944', bg: 'radial-gradient(circle,#995522,#552200)' },
+  100:  { border: '#333',    bg: 'radial-gradient(circle,#1a1a1a,#000)' },
+  250:  { border: '#cc55cc', bg: 'radial-gradient(circle,#882288,#441144)' },
+  500:  { border: '#44cccc', bg: 'radial-gradient(circle,#227777,#113333)' },
+  1000: { border: '#d4af37', bg: 'radial-gradient(circle,#8b7300,#4a3c00)' },
+};
+
+function getChipDenoms(buyIn) {
+  if (!buyIn || buyIn < 100)  return [1, 5, 10, 25, 50];
+  if (buyIn < 250)             return [1, 5, 25, 50, 100];
+  if (buyIn < 500)             return [5, 25, 50, 100, 250];
+  if (buyIn < 1000)            return [10, 50, 100, 250, 500];
+  return [25, 100, 250, 500, 1000];
+}
 
 function showChipTray(state) {
-  const tray = document.getElementById('bj-chip-tray');
-  if (!tray) return;
-  betAmount = 0; betChips = [];
-  
-  const minBet = state.minBet || 10;
-  const playerChips = (state.players || []).find(p => p.id === myPlayerId)?.chips || 0;
-  
-  tray.innerHTML = 
-    '<div id="bj-bet-adjuster" style="display:flex;align-items:center;gap:10px;width:100%;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.1);margin-bottom:8px;">' +
-      '<button id="bj-bet-dec" style="width:36px;height:36px;border-radius:50%;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);color:white;font-size:18px;cursor:pointer;">−</button>' +
-      '<div id="bj-bet-amount" style="flex:1;text-align:center;font-size:clamp(18px,2.5vw,26px);font-weight:bold;color:#d4af37;min-width:80px;">' + minBet + '</div>' +
-      '<button id="bj-bet-inc" style="width:36px;height:36px;border-radius:50%;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);color:white;font-size:18px;cursor:pointer;">+</button>' +
-    '</div>' +
-    '<div id="bj-quick-bets" style="display:flex;gap:6px;margin-bottom:10px;width:100%;">' +
-      '<button class="bj-quick-btn" data-quick="min" style="flex:1;padding:6px;border-radius:4px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:white;font-size:clamp(10px,1.2vw,12px);cursor:pointer;">MIN</button>' +
-      '<button class="bj-quick-btn" data-quick="half" style="flex:1;padding:6px;border-radius:4px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:white;font-size:clamp(10px,1.2vw,12px);cursor:pointer;">½</button>' +
-      '<button class="bj-quick-btn" data-quick="double" style="flex:1;padding:6px;border-radius:4px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:white;font-size:clamp(10px,1.2vw,12px);cursor:pointer;">2×</button>' +
-      '<button class="bj-quick-btn" data-quick="max" style="flex:1;padding:6px;border-radius:4px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:white;font-size:clamp(10px,1.2vw,12px);cursor:pointer;">MAX</button>' +
-      '<button class="bj-quick-btn" data-quick="all" style="flex:1;padding:6px;border-radius:4px;border:1px solid rgba(248,81,73,0.4);background:rgba(248,81,73,0.15);color:#ff6b6b;font-size:clamp(10px,1.2vw,12px);cursor:pointer;">ALL IN</button>' +
-    '</div>' +
-    '<div id="bj-tray-chips" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">' +
-    CHIP_DENOMS.map(function(d) {
-      const canAfford = d.value <= playerChips;
-      return '<div class="bj-chip" data-chip-value="' + d.value + '" style="width:clamp(38px,5.2vw,50px);height:clamp(38px,5.2vw,50px);border-radius:50%;background:' + d.bg + ';border:3px solid ' + d.border + ';color:' + d.color + ';display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:clamp(9px,1.2vw,13px);cursor:pointer;user-select:none;transition:transform 0.1s ease;box-shadow:0 0 0 2px rgba(255,255,255,0.15),0 4px 8px rgba(0,0,0,0.5);' + (canAfford ? '' : 'opacity:0.4;') + '">' + (d.value >= 1000 ? '1K' : d.value) + '</div>';
-    }).join('') +
-    '</div>' +
-    '<div id="bj-tray-betstack" style="display:flex;align-items:center;gap:6px;flex:1;min-width:120px;color:#d4af37;font-weight:bold;">No bet</div>' +
-    '<button id="bj-clear-bet" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:6px 14px;color:white;cursor:pointer;font-family:inherit;">Clear</button>' +
-    '<button id="bj-bet-btn" disabled style="background:linear-gradient(135deg,#d4af37,#a07820);color:#1a1a00;font-weight:bold;border:none;border-radius:8px;padding:8px 22px;cursor:pointer;font-family:inherit;font-size:clamp(12px,1.4vw,15px);letter-spacing:1px;">BET</button>';
-  tray.classList.remove('bj-hidden');
-  
-  // Wire up bet adjusters
-  const betDec = document.getElementById('bj-bet-dec');
-  const betInc = document.getElementById('bj-bet-inc');
-  const betDisplay = document.getElementById('bj-bet-amount');
-  
-  if (betDec) {
-    betDec.addEventListener('click', function() {
-      betAmount = Math.max(minBet, betAmount - minBet);
-      betDisplay.textContent = betAmount;
-      updateChipTrayDisplay();
-    });
-  }
-  if (betInc) {
-    const longPress = { timer: null, interval: null };
-    const doInc = function() {
-      const max = playerChips;
-      betAmount = Math.min(max, betAmount + minBet);
-      betDisplay.textContent = betAmount;
-      updateChipTrayDisplay();
-    };
-    betInc.addEventListener('mousedown', function() {
-      longPress.timer = setTimeout(function() {
-        longPress.interval = setInterval(doInc, 80);
-      }, 400);
-    });
-    betInc.addEventListener('mouseup', function() {
-      clearTimeout(longPress.timer);
-      clearInterval(longPress.interval);
-    });
-    betInc.addEventListener('mouseleave', function() {
-      clearTimeout(longPress.timer);
-      clearInterval(longPress.interval);
-    });
-    betInc.addEventListener('click', doInc);
-  }
-  
-  // Quick bet buttons
-  tray.querySelectorAll('.bj-quick-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      const quick = btn.dataset.quick;
-      const max = playerChips;
-      switch(quick) {
-        case 'min': betAmount = minBet; break;
-        case 'half': betAmount = Math.floor(playerChips / 2); break;
-        case 'double': betAmount = Math.min(max, betAmount * 2); break;
-        case 'max': betAmount = max; break;
-        case 'all': betAmount = playerChips; break;
-      }
-      betAmount = Math.max(minBet, Math.min(playerChips, betAmount));
-      betDisplay.textContent = betAmount;
-      updateChipTrayDisplay();
-    });
+  const wrap = document.getElementById('bj-chip-tray-wrap');
+  if (!wrap) return;
+
+  // Reset bet state
+  betAmount = 0;
+  betChips = [];
+
+  const minBet = (state.config && state.config.minBet) || state.minBet || 1;
+  const me = (state.players || []).find(function(p) { return p.id === myPlayerId; });
+  const playerChips = me ? (me.chips || 0) : 0;
+  const buyIn = (state.config && state.config.buyIn) || state.buyIn || 0;
+  const denoms = getChipDenoms(buyIn);
+
+  // Build DOM
+  wrap.innerHTML = '';
+
+  // Bet display row
+  const betDisplay = document.createElement('div');
+  betDisplay.id = 'bj-bet-display';
+  const betLabel = document.createElement('span');
+  betLabel.id = 'bj-bet-label';
+  betLabel.textContent = 'BET';
+  const betValue = document.createElement('span');
+  betValue.id = 'bj-bet-value';
+  betValue.textContent = '0';
+  const betClear = document.createElement('button');
+  betClear.id = 'bj-bet-clear';
+  betClear.textContent = '\u2715';
+  betDisplay.appendChild(betLabel);
+  betDisplay.appendChild(betValue);
+  betDisplay.appendChild(betClear);
+  wrap.appendChild(betDisplay);
+
+  // Chip buttons row
+  const chipsRow = document.createElement('div');
+  chipsRow.id = 'bj-chips';
+  denoms.forEach(function(val) {
+    const cs = CHIP_STYLE[val] || { border: '#888', bg: 'radial-gradient(circle,#555,#333)' };
+    const canAfford = val <= playerChips;
+    const btn = document.createElement('button');
+    btn.className = 'bj-chip';
+    btn.dataset.value = val;
+    btn.style.cssText = 'background:' + cs.bg + ';border-color:' + cs.border + ';'
+      + (canAfford ? '' : 'opacity:0.35;cursor:not-allowed;');
+    const lbl = document.createElement('span');
+    lbl.className = 'bj-chip-label';
+    lbl.textContent = val >= 1000 ? '1K' : String(val);
+    btn.appendChild(lbl);
+    chipsRow.appendChild(btn);
   });
-  
+  wrap.appendChild(chipsRow);
+
+  // Deal button
+  const dealBtn = document.createElement('button');
+  dealBtn.id = 'bj-deal-btn';
+  dealBtn.textContent = 'DEAL';
+  dealBtn.disabled = true;
+  wrap.appendChild(dealBtn);
+
+  // Show the wrap
+  wrap.style.display = 'flex';
+
+  // ── Wire events ──────────────────────────────────────────────────────────────
+  chipsRow.addEventListener('click', function(e) {
+    const btn = e.target.closest('.bj-chip');
+    if (!btn) return;
+    const val = parseInt(btn.dataset.value, 10);
+    if (betAmount + val > playerChips) return;
+    betAmount += val;
+    betChips.push(val);
+    sfx.chip();
+    updateChipTrayDisplay();
+  });
+
+  betClear.addEventListener('click', function() {
+    betAmount = 0;
+    betChips = [];
+    updateChipTrayDisplay();
+  });
+
+  dealBtn.addEventListener('click', function() {
+    if (betAmount <= 0) return;
+    if (minBet && betAmount < minBet) {
+      const bv = document.getElementById('bj-bet-value');
+      if (bv) {
+        bv.style.color = '#ff4444';
+        setTimeout(function() { bv.style.color = ''; }, 600);
+      }
+      return;
+    }
+    socketRef.emit('game:action', { sessionId: socketRef.currentSessionId, action: { type: 'place_bet', amount: betAmount } });
+    wrap.style.display = 'none';
+    betAmount = 0;
+    betChips = [];
+  });
+
   if (timerInterval) clearInterval(timerInterval);
 }
 
 function hideChipTray() {
-  const tray = document.getElementById('bj-chip-tray');
-  if (tray) tray.classList.add('bj-hidden');
+  const wrap = document.getElementById('bj-chip-tray-wrap');
+  if (wrap) wrap.style.display = 'none';
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
 }
 
 function updateChipTrayDisplay() {
-  const stack = document.getElementById('bj-tray-betstack');
-  const btn = document.getElementById('bj-bet-btn');
-  if (stack) stack.textContent = betAmount > 0 ? 'Bet: ' + betAmount : 'No bet';
+  const val = document.getElementById('bj-bet-value');
+  const btn = document.getElementById('bj-deal-btn');
+  if (val) val.textContent = betAmount;
   if (btn) btn.disabled = betAmount <= 0;
 }
 
-// ── Sit Out Toggle ───────────────────────────────────────────────────────────────
-function showSitOutToggle() {
-  const existing = document.getElementById('bj-sitout-btn');
-  if (existing) return;
+// ── Sit Out / Pause Toggle ───────────────────────────────────────────────────
+function showSitOutToggle(state) {
+  const otherHumans = (state.players || []).filter(function(p) {
+    return !p.is_bot && p.id !== myPlayerId;
+  });
+  const isMultiplayer = otherHumans.length > 0;
+
+  let btn = document.getElementById('bj-sitout-btn');
   const scene = document.getElementById('bj-scene');
   if (!scene) return;
-  const btn = document.createElement('button');
-  btn.id = 'bj-sitout-btn';
-  btn.textContent = sitOutNextRound ? 'SITTING OUT \u2713' : 'SIT OUT NEXT';
-  btn.className = sitOutNextRound ? 'bj-sitting-out' : '';
-  btn.addEventListener('click', function() {
-    sitOutNextRound = !sitOutNextRound;
+
+  if (!btn) {
+    btn = document.createElement('button');
+    btn.id = 'bj-sitout-btn';
+    scene.style.position = 'relative';
+    scene.appendChild(btn);
+  }
+
+  // Store mode on element so click handler can read it
+  const prevMode = btn.dataset.mode;
+
+  if (isMultiplayer) {
+    // Sit-out mode — if we were paused, un-pause first
+    if (prevMode === 'pause' && isPaused) {
+      isPaused = false;
+      resumeCountdown();
+      hidePausedMessage();
+    }
+    btn.dataset.mode = 'sitout';
     btn.textContent = sitOutNextRound ? 'SITTING OUT \u2713' : 'SIT OUT NEXT';
     btn.className = sitOutNextRound ? 'bj-sitting-out' : '';
-  });
-  scene.style.position = 'relative';
-  scene.appendChild(btn);
+    btn.onclick = function() {
+      sitOutNextRound = !sitOutNextRound;
+      btn.textContent = sitOutNextRound ? 'SITTING OUT \u2713' : 'SIT OUT NEXT';
+      btn.className = sitOutNextRound ? 'bj-sitting-out' : '';
+    };
+  } else {
+    // Pause mode
+    btn.dataset.mode = 'pause';
+    if (isPaused) {
+      btn.textContent = '\u25B6 RESUME';
+      btn.style.cssText = '';
+      btn.className = '';
+      btn.style.borderColor = 'rgba(57,255,20,0.4)';
+      btn.style.color = 'var(--gc-green,#39ff14)';
+      btn.style.background = 'rgba(57,255,20,0.06)';
+    } else {
+      btn.textContent = '\u23F8 PAUSE';
+      btn.style.cssText = '';
+      btn.className = '';
+      btn.style.borderColor = 'var(--gc-border,rgba(168,255,168,0.15))';
+      btn.style.color = 'rgba(168,255,168,0.5)';
+      btn.style.background = 'var(--gc-surface,rgba(10,15,10,0.9))';
+    }
+    btn.onclick = function() {
+      if (!isPaused) {
+        // Pause
+        isPaused = true;
+        pausedCountdownRemaining = roundEndCountdown;
+        if (roundEndInterval) { clearInterval(roundEndInterval); roundEndInterval = null; }
+        btn.textContent = '\u25B6 RESUME';
+        btn.style.borderColor = 'rgba(57,255,20,0.4)';
+        btn.style.color = 'var(--gc-green,#39ff14)';
+        btn.style.background = 'rgba(57,255,20,0.06)';
+        // Show paused overlay
+        let msg = document.getElementById('bj-paused-msg');
+        if (!msg) {
+          msg = document.createElement('div');
+          msg.id = 'bj-paused-msg';
+          scene.appendChild(msg);
+        }
+        msg.textContent = 'PAUSED';
+      } else {
+        // Resume
+        isPaused = false;
+        hidePausedMessage();
+        btn.textContent = '\u23F8 PAUSE';
+        btn.style.borderColor = 'var(--gc-border,rgba(168,255,168,0.15))';
+        btn.style.color = 'rgba(168,255,168,0.5)';
+        btn.style.background = 'var(--gc-surface,rgba(10,15,10,0.9))';
+        resumeCountdown();
+      }
+    };
+  }
+}
+
+function resumeCountdown() {
+  if (pausedCountdownRemaining === null) return;
+  if (pausedCountdownRemaining <= 0) {
+    // Countdown had already expired — go straight to ready/betting
+    clearRoundEndCountdown();
+    pausedCountdownRemaining = null;
+    return;
+  }
+  roundEndCountdown = pausedCountdownRemaining;
+  pausedCountdownRemaining = null;
+  roundEndInterval = setInterval(function() {
+    if (isPaused) return; // safety guard
+    roundEndCountdown--;
+    const timerEl = document.getElementById('bj-round-timer');
+    if (timerEl) timerEl.textContent = roundEndCountdown;
+    if (roundEndCountdown <= 0) { clearRoundEndCountdown(); }
+  }, 1000);
 }
 
 function hideSitOutToggle() {
   const btn = document.getElementById('bj-sitout-btn');
   if (btn) btn.remove();
+  // Also clean up pause state when toggling off
+  if (isPaused) {
+    isPaused = false;
+    pausedCountdownRemaining = null;
+    hidePausedMessage();
+  }
 }
 
 function showPausedMessage() {
@@ -1093,6 +1208,7 @@ function startRoundEndCountdown(state) {
   
   roundEndCountdown = 8;
   roundEndInterval = setInterval(function() {
+    if (isPaused) return; // frozen while paused
     roundEndCountdown--;
     const timerEl = document.getElementById('bj-round-timer');
     if (timerEl) timerEl.textContent = roundEndCountdown;
@@ -1114,12 +1230,19 @@ function clearRoundEndCountdown() {
 
 // ── New hand ──────────────────────────────────────────────────────────────────
 function handleNewHand(state) {
-  sfx.shuffle();
+  // Cancel all pending dealCard timeouts to prevent stale flying cards landing
+  flyingCardTimeouts.forEach(function(id) { clearTimeout(id); });
+  flyingCardTimeouts = [];
+  // Remove any cards currently mid-flight on document.body (position:fixed)
   document.querySelectorAll('.bj-card').forEach(function(c) {
+    if (c.style.position === 'fixed') { c.remove(); return; }
     c.style.transition = 'transform 0.25s ease, opacity 0.25s ease';
     c.style.transform = 'scale(0) rotate(8deg)';
     c.style.opacity = '0';
   });
+  // Ensure countdown bar is gone
+  clearRoundEndCountdown();
+  sfx.shuffle();
   setTimeout(function() {
     document.querySelectorAll('.bj-card, .bj-result-overlay').forEach(function(el) { el.remove(); });
     betChips = []; betAmount = 0;
@@ -1193,8 +1316,8 @@ export function update(gameState, playerId, hostPlayerId) {
     if (!roundEndCountdown) {
       startRoundEndCountdown(gameState);
     }
-    showSitOutToggle();
-    hidePausedMessage(); // Clear paused msg if we enter intermission normally
+    showSitOutToggle(gameState);
+    if (!isPaused) hidePausedMessage(); // Clear paused msg if we enter intermission normally
     // Auto-sit-out if toggle was set and round is starting
     if (sitOutNextRound && socketRef) {
       socketRef.emit('game:sit_out', { sessionId: socketRef.currentSessionId });
@@ -1234,8 +1357,12 @@ export function update(gameState, playerId, hostPlayerId) {
   (gameState.players || []).forEach(function(p) { syncSeat(p, prev); });
   updateActionButtons();
   if (gameState.phase === 'results') showResults(gameState);
-  if (gameState.phase === 'betting' && prev && prev.phase !== 'betting') showChipTray(gameState);
-  if (gameState.phase !== 'betting') hideChipTray();
+  if (gameState.phase === 'betting') {
+    // Only rebuild chip tray when transitioning INTO betting phase, not on every tick
+    if (!prev || prev.phase !== 'betting') showChipTray(gameState);
+  } else {
+    hideChipTray();
+  }
   updateScoreboard(gameState);
   updateHUD(gameState);
 }
@@ -1244,6 +1371,8 @@ export function destroy() {
   if (roRef) { roRef.disconnect(); roRef = null; }
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   if (roundEndInterval) { clearInterval(roundEndInterval); roundEndInterval = null; }
+  flyingCardTimeouts.forEach(function(id) { clearTimeout(id); });
+  flyingCardTimeouts = [];
   if (audioCtx) { audioCtx.close().catch(function() {}); audioCtx = null; }
   if (styleTag) { styleTag.remove(); styleTag = null; }
   if (socketRef) {
@@ -1254,5 +1383,6 @@ export function destroy() {
   if (containerRef) { containerRef.innerHTML = ''; containerRef = null; }
   currentGameState = null; myPlayerId = null; socketRef = null;
   seatOrder = []; lastRound = 0; betChips = []; betAmount = 0; cardTheme = 'default';
-  sitOutNextRound = false; roundEndCountdown = null;
+  sitOutNextRound = false; roundEndCountdown = null; roundEndInterval = null;
+  isPaused = false; pausedCountdownRemaining = null;
 }

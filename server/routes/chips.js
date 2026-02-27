@@ -104,5 +104,56 @@ router.get('/api/chips/history', (req, res) => {
   res.json(transactions);
 });
 
+// POST /api/chips/bet — deduct chips for a bet
+router.post('/api/chips/bet', (req, res) => {
+  const playerId = requirePlayer(req, res);
+  if (!playerId) {
+    return res.status(401).json({ error: 'Not logged in.' });
+  }
+
+  const { amount, gameType } = req.body;
+  if (!amount || typeof amount !== 'number' || amount <= 0) {
+    return res.status(400).json({ error: 'Valid amount required.' });
+  }
+
+  const player = db.prepare('SELECT chips FROM players WHERE id = ?').get(playerId);
+  if (!player || player.chips < amount) {
+    return res.status(400).json({ error: 'Not enough chips.' });
+  }
+
+  const now = Date.now();
+  db.prepare('UPDATE players SET chips = chips - ? WHERE id = ?').run(amount, playerId);
+  db.prepare(`
+    INSERT INTO chip_transactions (player_id, amount, reason, game_type, created_at)
+    VALUES (?, ?, 'bet', ?, ?)
+  `).run(playerId, -amount, gameType || 'treasure-tower', now);
+
+  const updated = db.prepare('SELECT chips FROM players WHERE id = ?').get(playerId);
+  res.json({ chips: updated.chips });
+});
+
+// POST /api/chips — award chips (payout, refund, etc.)
+router.post('/api/chips', (req, res) => {
+  const playerId = requirePlayer(req, res);
+  if (!playerId) {
+    return res.status(401).json({ error: 'Not logged in.' });
+  }
+
+  const { amount, reason, gameType } = req.body;
+  if (!amount || typeof amount !== 'number' || amount <= 0) {
+    return res.status(400).json({ error: 'Valid amount required.' });
+  }
+
+  const now = Date.now();
+  db.prepare('UPDATE players SET chips = chips + ? WHERE id = ?').run(amount, playerId);
+  db.prepare(`
+    INSERT INTO chip_transactions (player_id, amount, reason, game_type, created_at)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(playerId, amount, reason || 'payout', gameType || 'treasure-tower', now);
+
+  const updated = db.prepare('SELECT chips FROM players WHERE id = ?').get(playerId);
+  res.json({ chips: updated.chips });
+});
+
 module.exports = router;
 module.exports.STARTING_CHIPS = STARTING_CHIPS;
