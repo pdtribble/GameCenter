@@ -193,7 +193,7 @@ function updateParticles() {
   });
 }
 
-function render() {
+function drawFrame() {
   if (!ctx || !state) return;
   
   const w = canvasEl.width;
@@ -303,7 +303,7 @@ function gameLoop() {
   }
   
   // Render
-  render();
+  drawFrame();
   
   // Check game over
   if (state.phase === 'won' || state.phase === 'lost') {
@@ -362,7 +362,7 @@ function showOverlay(overlayType) {
       state.wins = wins;
       state.phase = 'ready';
       overlay.classList.add('hidden');
-      render();
+      drawFrame();
     });
   } else if (overlayType === 'lost') {
     overlay.innerHTML = `
@@ -377,7 +377,7 @@ function showOverlay(overlayType) {
       state.wins = wins;
       state.phase = 'ready';
       overlay.classList.add('hidden');
-      render();
+      drawFrame();
     });
   }
 }
@@ -448,7 +448,7 @@ export function render(container, options) {
   document.addEventListener('keydown', handleKeyDown);
   document.addEventListener('keyup', handleKeyUp);
   
-  render();
+  drawFrame();
   showOverlay('ready');
 }
 
