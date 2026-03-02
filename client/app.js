@@ -16,6 +16,8 @@ import { renderPoker } from './views/poker.js';
 import { renderTreasureTower } from './views/treasure-tower.js';
 import { renderPong } from './views/pong.js';
 import { renderBreakout } from './views/breakout.js';
+import { renderAsteroids } from './views/asteroids.js';
+import { renderSpaceInvaders } from './views/spaceInvaders.js';
 
 // ── Scale layout system ───────────────────────────────────────────────────────
 const LANDSCAPE_W = 1280, LANDSCAPE_H = 720;
@@ -87,7 +89,7 @@ export function showNav() {
 }
 
 // Views that get the full screen (bottom nav hidden)
-const FULLSCREEN_VIEWS = new Set(['game', 'minesweeper', 'snake', '2048', 'wordle', 'sudoku', 'pacman', 'tetris', 'poker', 'lobby', 'postgame', 'treasure-tower', 'pong', 'breakout']);
+const FULLSCREEN_VIEWS = new Set(['game', 'minesweeper', 'snake', '2048', 'wordle', 'sudoku', 'pacman', 'tetris', 'poker', 'lobby', 'postgame', 'treasure-tower', 'pong', 'breakout', 'asteroids', 'space-invaders']);
 
 // Top-level tabs and which view each maps to
 const TOP_LEVEL = { home: 'home', singleplayer: 'singleplayer', profile: 'profile' };
@@ -97,7 +99,7 @@ function updateBottomNav(view) {
     const tabView = btn.dataset.view;
     const isActive = tabView === view ||
       (tabView === 'home' && (view === 'lobby' || view === 'postgame')) ||
-      (tabView === 'singleplayer' && (view === 'minesweeper' || view === 'snake' || view === '2048' || view === 'wordle' || view === 'sudoku' || view === 'pacman' || view === 'tetris' || view === 'poker' || view === 'treasure-tower' || view === 'pong' || view === 'breakout'));
+      (tabView === 'singleplayer' && (view === 'minesweeper' || view === 'snake' || view === '2048' || view === 'wordle' || view === 'sudoku' || view === 'pacman' || view === 'tetris' || view === 'poker' || view === 'treasure-tower' || view === 'pong' || view === 'breakout' || view === 'asteroids' || view === 'space-invaders'));
     btn.classList.toggle('active', isActive);
   });
 }
@@ -147,9 +149,11 @@ function navigate(view, data = {}) {
     case 'tetris':       currentView = renderTetris(app, socket, state, navigate); break;
     case 'poker':        currentView = renderPoker(app, socket, state, navigate); break;
     case 'treasure-tower': currentView = renderTreasureTower(app, socket, state, navigate); break;
-    case 'pong':        currentView = renderPong(app, socket, state, navigate); break;
-    case 'breakout':    currentView = renderBreakout(app, socket, state, navigate); break;
-    default:             app.innerHTML = '<p style="padding:2rem;color:#fff">Unknown view.</p>';
+    case 'pong':           currentView = renderPong(app, socket, state, navigate); break;
+    case 'breakout':       currentView = renderBreakout(app, socket, state, navigate); break;
+    case 'asteroids':      currentView = renderAsteroids(app, socket, state, navigate); break;
+    case 'space-invaders': currentView = renderSpaceInvaders(app, socket, state, navigate); break;
+    default:               app.innerHTML = '<p style="padding:2rem;color:#fff">Unknown view.</p>';
   }
 }
 

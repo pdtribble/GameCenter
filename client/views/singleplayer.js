@@ -266,6 +266,24 @@ const tetrisStats = (() => {
         stats:  breakoutStats,
         formatStats: (s) => s?.highScore != null ? `<span>best <span style="color:var(--gc-gold,#f0c040)">${s.highScore}</span></span>` : '',
       },
+      {
+        id:     'asteroids',
+        name:   'Asteroids',
+        icon:   '🚀',
+        desc:   'Blast rocks, dodge UFOs. Classic vector shooter!',
+        accent: '#39ff14',
+        stats:  (() => { const hs = parseInt(localStorage.getItem('asteroids_hs') || '0', 10); return hs > 0 ? { highScore: hs } : null; })(),
+        formatStats: (s) => s?.highScore != null ? `<span>best <span style="color:var(--gc-gold,#f0c040)">${s.highScore}</span></span>` : '',
+      },
+      {
+        id:     'space-invaders',
+        name:   'Space Invaders',
+        icon:   '👾',
+        desc:   'Defend Earth from the alien armada. Classic arcade!',
+        accent: '#4090ff',
+        stats:  (() => { const hs = parseInt(localStorage.getItem('si_hs') || '0', 10); return hs > 0 ? { highScore: hs } : null; })(),
+        formatStats: (s) => s?.highScore != null ? `<span>best <span style="color:var(--gc-gold,#f0c040)">${s.highScore}</span></span>` : '',
+      },
     ];
 
     for (const g of games) {
