@@ -320,6 +320,7 @@ export function startRenderer(initialState, canvas, navigate) {
   let frame = 0;
   let highScore = parseInt(localStorage.getItem('asteroids_hs') || '0', 10);
   state.highScore = highScore;
+  let lastTime = 0;
 
   const audio = createAudio();
 
@@ -340,7 +341,10 @@ export function startRenderer(initialState, canvas, navigate) {
     state = setKey(state, e.key, false);
   }
 
-  function loop() {
+  function loop(timestamp) {
+    const dt = lastTime ? Math.min((timestamp - lastTime) / 1000, 0.1) : 1/60;
+    lastTime = timestamp;
+    
     frame++;
 
     const prevScore  = state.score;
@@ -348,7 +352,7 @@ export function startRenderer(initialState, canvas, navigate) {
     const curAsteroidCount = state.asteroids.length;
     const curUfoAlive      = !!state.ufo;
 
-    state = tick(state);
+    state = tick(state, dt);
 
     // ── Sound triggers ─────────────────────────────────────────────────────
     if (state.asteroids.length < curAsteroidCount) {

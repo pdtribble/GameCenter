@@ -8,8 +8,8 @@ const ENEMY_PAD_X = 14;
 const ENEMY_PAD_Y = 14;
 const GRID_START_X = 80;
 const GRID_START_Y = 80;
-const PLAYER_SPEED = 4;
-const BULLET_SPEED = 9;
+const PLAYER_SPEED = 240;  // pixels per second (was 4 per frame at 60fps)
+const BULLET_SPEED = 540; // pixels per second (was 9 per frame at 60fps)
 const UFO_INTERVAL = 700;
 
 function rectHit(ax, ay, aw, ah, bx, by, bw, bh) {
@@ -150,7 +150,7 @@ function getEnemyPos(state, enemy) {
   };
 }
 
-function tick(state) {
+function tick(state, dt = 1/60) {
   // Deep-copy mutable parts
   state = {
     ...state,
@@ -218,11 +218,12 @@ function tick(state) {
 
   // ── Player movement ──────────────────────────────────────────────────────
   const halfW = state.player.w / 2;
+  const playerSpeed = PLAYER_SPEED * dt;
   if ((state.keys['ArrowLeft'] || state.keys['a'] || state.keys['A']) && state.player.x - halfW > 0) {
-    state.player.x -= PLAYER_SPEED;
+    state.player.x -= playerSpeed;
   }
   if ((state.keys['ArrowRight'] || state.keys['d'] || state.keys['D']) && state.player.x + halfW < state.width) {
-    state.player.x += PLAYER_SPEED;
+    state.player.x += playerSpeed;
   }
 
   // ── Player fire ──────────────────────────────────────────────────────────
@@ -239,7 +240,7 @@ function tick(state) {
 
   // ── Player bullet movement ───────────────────────────────────────────────
   if (state.playerBullet) {
-    state.playerBullet.y -= BULLET_SPEED;
+    state.playerBullet.y -= BULLET_SPEED * dt;
     if (state.playerBullet.y + state.playerBullet.h < 0) {
       state.playerBullet = null;
     }
@@ -269,7 +270,7 @@ function tick(state) {
         y: pos.y + ENEMY_H,
         w: 3,
         h: 10,
-        speed: 3 + state.wave * 0.4,
+        speed: (3 + state.wave * 0.4) * 60, // per second
       });
     }
     state.enemyFireTimer = Math.max(20, 80 - state.wave * 5);
@@ -278,7 +279,7 @@ function tick(state) {
   // ── Enemy bullets movement ───────────────────────────────────────────────
   const survivingEnemyBullets = [];
   for (const b of state.enemyBullets) {
-    b.y += b.speed;
+    b.y += b.speed * dt;
     if (b.y < state.height + 20) survivingEnemyBullets.push(b);
   }
   state.enemyBullets = survivingEnemyBullets;
@@ -291,10 +292,10 @@ function tick(state) {
   state.enemyMoveInterval = Math.max(4, 60 - (55 - aliveCount) * 1.1);
 
   // ── Enemy grid movement ──────────────────────────────────────────────────
-  state.enemyMoveTimer--;
+  state.enemyMoveTimer -= dt;
   let didStep = false;
   if (state.enemyMoveTimer <= 0) {
-    state.gridX += state.gridDir * state.gridStep;
+    state.gridX += state.gridDir * state.gridStep * dt * 60; // scale for 60fps baseline
     didStep = true;
 
     // Toggle frame on each step (PASS 2)
@@ -316,7 +317,7 @@ function tick(state) {
 
     if (hitRight || hitLeft) {
       state.gridDir *= -1;
-      state.gridY += 18;
+      state.gridY += 18 * dt * 60;
     }
 
     // Check if enemies reached player
@@ -334,11 +335,11 @@ function tick(state) {
   if (!state.ufo) {
     state.ufoTimer--;
     if (state.ufoTimer <= 0) {
-      state.ufo = { x: -30, y: 30, w: 40, h: 16, speed: 2 };
+      state.ufo = { x: -30, y: 30, w: 40, h: 16, speed: 120 }; // per second
       state.ufoTimer = UFO_INTERVAL;
     }
   } else {
-    state.ufo.x += state.ufo.speed;
+    state.ufo.x += state.ufo.speed * dt;
     if (state.ufo.x > state.width + 50) {
       state.ufo = null;
     }

@@ -360,6 +360,7 @@ export function startRenderer(initialState, canvas, navigate) {
   let rafId = null;
   let highScore = parseInt(localStorage.getItem('si_hs') || '0', 10);
   state.highScore = highScore;
+  let lastTime = 0;
 
   const audio = createAudio();
   let marchBeat = 0;
@@ -379,9 +380,12 @@ export function startRenderer(initialState, canvas, navigate) {
     state = setKey(state, e.key, false);
   }
 
-  function loop() {
+  function loop(timestamp) {
+    const dt = lastTime ? Math.min((timestamp - lastTime) / 1000, 0.1) : 1/60;
+    lastTime = timestamp;
+    
     const prevPhase = state.phase;
-    state = tick(state);
+    state = tick(state, dt);
 
     if (state.soundEvent) {
       audio.play(state.soundEvent);

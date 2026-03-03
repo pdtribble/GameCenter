@@ -408,9 +408,16 @@ function handleKeyDown(e) {
   }
   keysPressed[e.key] = true;
   
-  // Launch ball on space
-  if (e.key === ' ' && state?.ballAttached) {
-    state = breakout.launchBall(state);
+  // Spacebar to start/restart or launch ball
+  if (e.key === ' ' && state) {
+    const overlay = containerEl.querySelector('#breakout-overlay');
+    if (overlay && !overlay.classList.contains('hidden')) {
+      const btn = containerEl.querySelector('#breakout-start-btn') ||
+                  containerEl.querySelector('#breakout-retry-btn');
+      if (btn) btn.click();
+    } else if (state.ballAttached) {
+      state = breakout.launchBall(state);
+    }
   }
 }
 

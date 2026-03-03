@@ -106,7 +106,7 @@ function applyMove(board, direction, rngFn) {
     if (oldStr !== newStr) moved = true;
     for (let i = 0; i < row.length; i++) {
       if (row[i] !== 0 && newRow[i] !== row[i]) {
-        scoreGain += newRow[i] - row[i];
+        scoreGain += newRow[i];
       }
     }
     return newRow;

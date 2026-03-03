@@ -144,6 +144,7 @@ function injectStyles() {
 }
 
 function saveProgress() {
+  localStorage.setItem('pong_hs', String(highScore));
   if (playerId) {
     fetch('/api/sp/saves/pong', {
       method: 'POST',
@@ -387,6 +388,24 @@ function handleKeyDown(e) {
     e.preventDefault();
   }
   keysPressed[e.key] = true;
+  
+  // Spacebar to start/restart
+  if (e.key === ' ' && state) {
+    e.preventDefault();
+    const overlay = containerEl.querySelector('#pong-overlay');
+    if (overlay && !overlay.classList.contains('hidden')) {
+      const btn = containerEl.querySelector('#pong-start-btn') || 
+                  containerEl.querySelector('#pong-replay-btn') ||
+                  containerEl.querySelector('#pong-retry-btn');
+      if (btn) btn.click();
+    } else if (state.phase === 'gameover') {
+      state = pong.initGame(difficulty);
+      state.highScore = highScore;
+      state.wins = wins;
+      state.phase = 'playing';
+      gameLoop();
+    }
+  }
 }
 
 function handleKeyUp(e) {

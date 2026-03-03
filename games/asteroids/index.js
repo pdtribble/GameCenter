@@ -1,13 +1,13 @@
 // ─── Constants ───────────────────────────────────────────────────────────────
 const SHIP_RADIUS   = 14;
-const BULLET_SPEED  = 9;
+const BULLET_SPEED  = 540;  // was 9 per frame at 60fps
 const BULLET_LIFE   = 55;
 const FIRE_COOLDOWN = 10;
-const TURN_SPEED    = 0.065;
-const THRUST        = 0.16;
-const FRICTION      = 0.982;
+const TURN_SPEED    = 3.9;  // was 0.065 per frame at 60fps
+const THRUST        = 9.6;   // was 0.16 per frame at 60fps
+const FRICTION      = 0.982; // this is multiplicative, not additive - handled specially
 const UFO_SPAWN     = 900;
-const UFO_SPEED     = 2.2;
+const UFO_SPEED     = 132;   // was 2.2 per frame at 60fps
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -52,18 +52,18 @@ function makeAsteroid(x, y, size, inheritVx, inheritVy) {
   inheritVy = inheritVy || 0;
 
   const radius = SIZE_RADIUS[size];
-  const speed  = rnd(0.5, 1.6) + (size === 'small' ? 0.4 : 0);
+  const speed  = (rnd(0.5, 1.6) + (size === 'small' ? 0.4 : 0)) * 60; // per second
   const angle  = rnd(0, Math.PI * 2);
 
   return {
     x,
     y,
-    vx: Math.cos(angle) * speed + inheritVx * 0.4,
-    vy: Math.sin(angle) * speed + inheritVy * 0.4,
+    vx: Math.cos(angle) * speed + inheritVx * 0.4 * 60,
+    vy: Math.sin(angle) * speed + inheritVy * 0.4 * 60,
     radius,
     size,
     angle: rnd(0, Math.PI * 2),
-    rotSpeed: rnd(-0.028, 0.028) || 0.01,
+    rotSpeed: (rnd(-0.028, 0.028) || 0.01) * 60, // per second
     vertices: randomVertices(rndInt(7, 12)),
   };
 }
@@ -194,7 +194,7 @@ function initGame(width, height) {
 
 // ─── tick ────────────────────────────────────────────────────────────────────
 
-function tick(state) {
+function tick(state, dt = 1/60) {
   if (state.phase === 'gameover') return state;
 
   // Shallow-clone top-level mutable collections that we will rebuild
@@ -254,13 +254,13 @@ function tick(state) {
   const up    = keys['ArrowUp']    || keys['w'] || keys['W'];
   const fire  = keys[' '];
 
-  if (left)  s.ship.angle -= TURN_SPEED;
-  if (right) s.ship.angle += TURN_SPEED;
+  if (left)  s.ship.angle -= TURN_SPEED * dt;
+  if (right) s.ship.angle += TURN_SPEED * dt;
 
   s.ship.thrusting = false;
   if (up) {
-    s.ship.vx += Math.cos(s.ship.angle) * THRUST;
-    s.ship.vy += Math.sin(s.ship.angle) * THRUST;
+    s.ship.vx += Math.cos(s.ship.angle) * THRUST * dt;
+    s.ship.vy += Math.sin(s.ship.angle) * THRUST * dt;
     s.ship.thrusting = true;
   }
 
@@ -271,7 +271,7 @@ function tick(state) {
     const ty = s.ship.y + Math.sin(tailAngle) * SHIP_RADIUS;
     for (let i = 0; i < 2; i++) {
       const spreadAngle = tailAngle + rnd(-0.4, 0.4);
-      const spd = rnd(1.5, 3.5);
+      const spd = rnd(1.5, 3.5) * 60 * dt; // per second
       s.particles.push({
         x: tx + rnd(-2, 2),
         y: ty + rnd(-2, 2),
@@ -285,19 +285,20 @@ function tick(state) {
     }
   }
 
-  // Apply friction and move ship
-  s.ship.vx *= FRICTION;
-  s.ship.vy *= FRICTION;
-  s.ship.x = wrap(s.ship.x + s.ship.vx, 0, width);
-  s.ship.y = wrap(s.ship.y + s.ship.vy, 0, height);
+  // Apply friction and move ship (friction is applied per-frame)
+  const frictionAdjusted = Math.pow(FRICTION, dt * 60);
+  s.ship.vx *= frictionAdjusted;
+  s.ship.vy *= frictionAdjusted;
+  s.ship.x = wrap(s.ship.x + s.ship.vx * dt * 60, 0, width);
+  s.ship.y = wrap(s.ship.y + s.ship.vy * dt * 60, 0, height);
 
   // ── Firing ────────────────────────────────────────────────────────────────
   if (fire && s.fireCooldown === 0) {
     s.bullets.push({
       x: s.ship.x + Math.cos(s.ship.angle) * SHIP_RADIUS,
       y: s.ship.y + Math.sin(s.ship.angle) * SHIP_RADIUS,
-      vx: Math.cos(s.ship.angle) * BULLET_SPEED + s.ship.vx,
-      vy: Math.sin(s.ship.angle) * BULLET_SPEED + s.ship.vy,
+      vx: Math.cos(s.ship.angle) * BULLET_SPEED * dt + s.ship.vx,
+      vy: Math.sin(s.ship.angle) * BULLET_SPEED * dt + s.ship.vy,
       life: BULLET_LIFE,
       fromUfo: false,
     });
@@ -308,8 +309,8 @@ function tick(state) {
   const liveBullets = [];
   for (let i = 0; i < s.bullets.length; i++) {
     const b = s.bullets[i];
-    b.x    = wrap(b.x + b.vx, 0, width);
-    b.y    = wrap(b.y + b.vy, 0, height);
+    b.x    = wrap(b.x + b.vx * dt * 60, 0, width);
+    b.y    = wrap(b.y + b.vy * dt * 60, 0, height);
     b.life--;
     if (b.life > 0) liveBullets.push(b);
   }
@@ -318,9 +319,9 @@ function tick(state) {
   // ── Move asteroids ────────────────────────────────────────────────────────
   for (let i = 0; i < s.asteroids.length; i++) {
     const a = s.asteroids[i];
-    a.x     = wrap(a.x + a.vx, 0, width);
-    a.y     = wrap(a.y + a.vy, 0, height);
-    a.angle += a.rotSpeed;
+    a.x     = wrap(a.x + a.vx * dt * 60, 0, width);
+    a.y     = wrap(a.y + a.vy * dt * 60, 0, height);
+    a.angle += a.rotSpeed * dt * 60;
   }
 
   // ── Invulnerability timer ─────────────────────────────────────────────────
@@ -405,11 +406,11 @@ function tick(state) {
 
     if (s.ufo) {
       s.ufo = { ...s.ufo };
-      s.ufo.x += s.ufo.vx;
-      s.ufo.y += s.ufo.vy;
+      s.ufo.x += s.ufo.vx * dt * 60;
+      s.ufo.y += s.ufo.vy * dt * 60;
 
       // Gentle sine drift
-      s.ufo.y += Math.sin(Date.now() * 0.002) * 0.6;
+      s.ufo.y += Math.sin(Date.now() * 0.002) * 0.6 * dt;
 
       // UFO fires at ship
       s.ufo.fireCooldown--;

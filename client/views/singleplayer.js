@@ -141,11 +141,15 @@ const tetrisSavesP = playerId
   Promise.all([msStatsP, snakeSavesP, t48SavesP, wordleSavesP, sudokuSavesP, pacmanSavesP, tetrisSavesP, pongSavesP, breakoutSavesP, statsApiP]).then(([msStats, snakeSaves, t48Saves, wordleSaves, sudokuSaves, pacmanSaves, tetrisSaves, pongSaves, breakoutSaves, meStats]) => {
     const snakeStats = (() => {
       const hs = snakeSaves.find(s => s.slot === 'highscore');
-      return hs?.data?.highScore != null ? { highScore: hs.data.highScore } : null;
+      if (hs?.data?.highScore != null) return { highScore: hs.data.highScore };
+      const localHs = parseInt(localStorage.getItem('snake_hs') || '0', 10);
+      return localHs > 0 ? { highScore: localHs } : null;
     })();
     const t48Stats = (() => {
       const best = t48Saves.find(s => s.slot === 'best');
-      return best?.data?.best != null ? { best: best.data.best } : null;
+      if (best?.data?.best != null) return { best: best.data.best };
+      const localBest = parseInt(localStorage.getItem('t48_best') || '0', 10);
+      return localBest > 0 ? { best: localBest } : null;
     })();
     const wordleStats = (() => {
       const daily = wordleSaves.find(s => s.slot === 'dailySave');
@@ -159,19 +163,27 @@ const tetrisSavesP = playerId
     })();
     const pacmanStats = (() => {
       const hs = pacmanSaves.find(s => s.slot === 'highscore');
-      return hs?.data?.highScore != null ? { highScore: hs.data.highScore } : null;
+      if (hs?.data?.highScore != null) return { highScore: hs.data.highScore };
+      const localHs = parseInt(localStorage.getItem('pacman_hs') || '0', 10);
+      return localHs > 0 ? { highScore: localHs } : null;
     })();
 const tetrisStats = (() => {
       const hs = tetrisSaves.find(s => s.slot === 'highscore');
-      return hs?.data?.highScore != null ? { highScore: hs.data.highScore } : null;
+      if (hs?.data?.highScore != null) return { highScore: hs.data.highScore };
+      const localHs = parseInt(localStorage.getItem('tetris_hs') || '0', 10);
+      return localHs > 0 ? { highScore: localHs } : null;
     })();
     const pongStats = (() => {
       const stats = pongSaves.find(s => s.slot === 'stats');
-      return stats?.data?.highScore != null ? { highScore: stats.data.highScore } : null;
+      if (stats?.data?.highScore != null) return { highScore: stats.data.highScore };
+      const localHs = parseInt(localStorage.getItem('pong_hs') || '0', 10);
+      return localHs > 0 ? { highScore: localHs } : null;
     })();
     const breakoutStats = (() => {
       const stats = breakoutSaves.find(s => s.slot === 'stats');
-      return stats?.data?.highScore != null ? { highScore: stats.data.highScore } : null;
+      if (stats?.data?.highScore != null) return { highScore: stats.data.highScore };
+      const localHs = parseInt(localStorage.getItem('breakout_hs') || '0', 10);
+      return localHs > 0 ? { highScore: localHs } : null;
     })();
     const isGuest = meStats?.isGuest === true;
     grid.innerHTML = '';
