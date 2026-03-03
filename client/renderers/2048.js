@@ -677,6 +677,12 @@ function handleMove(direction) {
     updateBoard(prevBoard);
     updateHUD(prevScore);
     saveGame();
+
+    // Live high score tracking - save immediately when surpassed
+    const localBest = parseInt(localStorage.getItem('t48_best') || '0', 10);
+    if (state.best > localBest) {
+      localStorage.setItem('t48_best', String(state.best));
+    }
     
     if (state.phase === 'won' || state.phase === 'over') {
       saveBestScore();

@@ -387,6 +387,13 @@ export function startRenderer(initialState, canvas, navigate) {
     const prevPhase = state.phase;
     state = tick(state, dt);
 
+    // Live high score tracking - save immediately when surpassed
+    if (state.score > highScore) {
+      highScore = state.score;
+      state.highScore = highScore;
+      localStorage.setItem('si_hs', String(highScore));
+    }
+
     if (state.soundEvent) {
       audio.play(state.soundEvent);
     }
@@ -401,10 +408,6 @@ export function startRenderer(initialState, canvas, navigate) {
 
     // High score update on gameover
     if (state.phase === 'gameover' && prevPhase !== 'gameover') {
-      if (state.score > highScore) {
-        highScore = state.score;
-        localStorage.setItem('si_hs', String(highScore));
-      }
       state.highScore = highScore;
     }
 

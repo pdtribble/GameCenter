@@ -326,6 +326,13 @@ function gameLoop() {
   
   // Tick
   state = breakout.tick(state);
+
+  // Live high score tracking - save immediately when surpassed
+  if (state.score > highScore) {
+    highScore = state.score;
+    state.highScore = highScore;
+    saveProgress();
+  }
   
   // Spawn particles for destroyed bricks
   for (let i = 0; i < state.bricks.length; i++) {
@@ -345,10 +352,6 @@ function gameLoop() {
   
   // Check game over
   if (state.phase === 'lost') {
-    if (state.score > highScore) {
-      highScore = state.score;
-      saveProgress();
-    }
     showOverlay('lost');
     return;
   }
@@ -408,14 +411,15 @@ function handleKeyDown(e) {
   }
   keysPressed[e.key] = true;
   
-  // Spacebar to start/restart or launch ball
   if (e.key === ' ' && state) {
     const overlay = containerEl.querySelector('#breakout-overlay');
     if (overlay && !overlay.classList.contains('hidden')) {
-      const btn = containerEl.querySelector('#breakout-start-btn') ||
-                  containerEl.querySelector('#breakout-retry-btn');
-      if (btn) btn.click();
-    } else if (state.ballAttached) {
+      overlay.classList.add('hidden');
+      state.phase = 'playing';
+      if (!animationId) {
+        gameLoop();
+      }
+    } else if (state.ballAttached && state.phase === 'playing') {
       state = breakout.launchBall(state);
     }
   }

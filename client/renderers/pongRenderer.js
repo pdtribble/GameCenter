@@ -292,6 +292,13 @@ function gameLoop() {
   // Tick
   const oldRally = state.rally;
   state = pong.tick(state);
+
+  // Live high score tracking - save immediately when surpassed
+  if (state.rally > highScore) {
+    highScore = state.rally;
+    state.highScore = highScore;
+    saveProgress();
+  }
   
   // Spawn particles on paddle hit (when rally increases)
   if (state.rally > oldRally) {
@@ -311,10 +318,6 @@ function gameLoop() {
     showOverlay(state.phase);
     if (state.phase === 'won') {
       wins++;
-      if (state.rally > highScore) {
-        highScore = state.rally;
-        saveProgress();
-      }
     }
     state.phase = 'gameover';
     return;

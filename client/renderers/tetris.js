@@ -681,6 +681,7 @@ function gravityTick() {
 
   const prevLevel = state.level;
   const prevLastClear = state.lastClear;
+  const prevScore = state.score;
 
   state = moveDown(state, rng);
 
@@ -688,6 +689,22 @@ function gravityTick() {
   if (state.lastClear && state.lastClear !== prevLastClear) {
     flashTimer = 150;
   }
+
+  // Level up — restart gravity at new speed
+  if (state.level !== prevLevel) {
+    startGravity();
+  }
+
+  // Live high score tracking - save immediately when surpassed
+  if (state.score > highScore) {
+    highScore = state.score;
+    saveHighScore(state.score);
+  }
+
+  if (state.phase === 'over') {
+    onGameOver();
+  }
+}
 
   // Level up — restart gravity at new speed
   if (state.level !== prevLevel) {
@@ -705,10 +722,6 @@ function onGameOver() {
   stopGravity();
 
   const isNewHS = state.score > highScore;
-  if (isNewHS) {
-    highScore = state.score;
-    saveHighScore(state.score);
-  }
 
   showOverlay('over', isNewHS);
 }
@@ -860,6 +873,13 @@ function handleKey(e) {
     if (state.level !== prevLevel) {
       startGravity();
     }
+
+    // Live high score tracking - save immediately when surpassed
+    if (state.score > highScore) {
+      highScore = state.score;
+      saveHighScore(state.score);
+    }
+
     if (state.phase === 'over') {
       onGameOver();
     }

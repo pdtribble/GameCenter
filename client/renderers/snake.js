@@ -607,6 +607,14 @@ function stopLoop() {
 function gameTick() {
   const oldState = JSON.parse(JSON.stringify(state));
   state = tick(state, Math.random);
+
+  // Live high score tracking - save immediately when surpassed
+  if (state.score > highScore) {
+    highScore = state.score;
+    state.highScore = highScore;
+    saveHighScore();
+  }
+
   updateCells(oldState, state);
   updateHUD();
   
@@ -624,8 +632,6 @@ function onDead() {
   
   const isNewHS = state.score > highScore;
   if (isNewHS) {
-    highScore = state.score;
-    saveHighScore();
     playHS();
     spawnConfetti();
   }
