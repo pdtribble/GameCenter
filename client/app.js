@@ -18,6 +18,7 @@ import { renderPong } from './views/pong.js';
 import { renderBreakout } from './views/breakout.js';
 import { renderAsteroids } from './views/asteroids.js';
 import { renderSpaceInvaders } from './views/spaceInvaders.js';
+import { renderIdleClicker } from './views/idleClicker.js';
 
 // ── Scale layout system ───────────────────────────────────────────────────────
 const LANDSCAPE_W = 1280, LANDSCAPE_H = 720;
@@ -89,7 +90,7 @@ export function showNav() {
 }
 
 // Views that get the full screen (bottom nav hidden)
-const FULLSCREEN_VIEWS = new Set(['game', 'minesweeper', 'snake', '2048', 'wordle', 'sudoku', 'pacman', 'tetris', 'poker', 'lobby', 'postgame', 'treasure-tower', 'pong', 'breakout', 'asteroids', 'space-invaders']);
+const FULLSCREEN_VIEWS = new Set(['game', 'minesweeper', 'snake', '2048', 'wordle', 'sudoku', 'pacman', 'tetris', 'poker', 'lobby', 'postgame', 'treasure-tower', 'pong', 'breakout', 'asteroids', 'space-invaders', 'idle-clicker']);
 
 // Top-level tabs and which view each maps to
 const TOP_LEVEL = { home: 'home', singleplayer: 'singleplayer', profile: 'profile' };
@@ -99,7 +100,7 @@ function updateBottomNav(view) {
     const tabView = btn.dataset.view;
     const isActive = tabView === view ||
       (tabView === 'home' && (view === 'lobby' || view === 'postgame')) ||
-      (tabView === 'singleplayer' && (view === 'minesweeper' || view === 'snake' || view === '2048' || view === 'wordle' || view === 'sudoku' || view === 'pacman' || view === 'tetris' || view === 'poker' || view === 'treasure-tower' || view === 'pong' || view === 'breakout' || view === 'asteroids' || view === 'space-invaders'));
+      (tabView === 'singleplayer' && (view === 'minesweeper' || view === 'snake' || view === '2048' || view === 'wordle' || view === 'sudoku' || view === 'pacman' || view === 'tetris' || view === 'poker' || view === 'treasure-tower' || view === 'pong' || view === 'breakout' || view === 'asteroids' || view === 'space-invaders' || view === 'idle-clicker'));
     btn.classList.toggle('active', isActive);
   });
 }
@@ -153,6 +154,7 @@ function navigate(view, data = {}) {
     case 'breakout':       currentView = renderBreakout(app, socket, state, navigate); break;
     case 'asteroids':      currentView = renderAsteroids(app, socket, state, navigate); break;
     case 'space-invaders': currentView = renderSpaceInvaders(app, socket, state, navigate); break;
+    case 'idle-clicker':   currentView = renderIdleClicker(app, socket, state, navigate); break;
     default:               app.innerHTML = '<p style="padding:2rem;color:#fff">Unknown view.</p>';
   }
 }

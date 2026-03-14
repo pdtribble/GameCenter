@@ -134,11 +134,16 @@ const tetrisSavesP = playerId
   const breakoutSavesP = playerId
     ? fetch('/api/sp/saves/breakout').then(r => r.ok ? r.json() : []).catch(() => [])
     : Promise.resolve([]);
+  const idleClickerSavesP = playerId
+    ? fetch('/api/sp/saves/idle-clicker').then(r => r.ok ? r.json() : []).catch(() => [])
+    : Promise.resolve([]);
 
   // Check if guest (to show progress warning)
   const statsApiP = fetch('/api/me/stats').then(r => r.json()).catch(() => null);
 
-  Promise.all([msStatsP, snakeSavesP, t48SavesP, wordleSavesP, sudokuSavesP, pacmanSavesP, tetrisSavesP, pongSavesP, breakoutSavesP, statsApiP]).then(([msStats, snakeSaves, t48Saves, wordleSaves, sudokuSaves, pacmanSaves, tetrisSaves, pongSaves, breakoutSaves, meStats]) => {
+  let bestscoreHandler = null;
+
+  Promise.all([msStatsP, snakeSavesP, t48SavesP, wordleSavesP, sudokuSavesP, pacmanSavesP, tetrisSavesP, pongSavesP, breakoutSavesP, idleClickerSavesP, statsApiP]).then(([msStats, snakeSaves, t48Saves, wordleSaves, sudokuSaves, pacmanSaves, tetrisSaves, pongSaves, breakoutSaves, idleClickerSaves, meStats]) => {
     const snakeStats = (() => {
       const hs = snakeSaves.find(s => s.slot === 'highscore');
       if (hs?.data?.highScore != null) return { highScore: hs.data.highScore };
@@ -185,6 +190,12 @@ const tetrisStats = (() => {
       const localHs = parseInt(localStorage.getItem('breakout_hs') || '0', 10);
       return localHs > 0 ? { highScore: localHs } : null;
     })();
+    const idleClickerStats = (() => {
+      const save = idleClickerSaves.find(s => s.slot === 'autosave');
+      if (save?.data?.bestScore != null && save.data.bestScore > 0) return { bestScore: save.data.bestScore };
+      const localBest = parseInt(localStorage.getItem('ic_best') || '0', 10);
+      return localBest > 0 ? { bestScore: localBest } : null;
+    })();
     const isGuest = meStats?.isGuest === true;
     grid.innerHTML = '';
 
@@ -204,7 +215,16 @@ const tetrisStats = (() => {
         icon:   '💣',
         desc:   'Classic sweeper + Endless mode. Phosphor-green terminal aesthetic.',
         accent: '#39ff14',
-        stats:  msStats,
+        stats:  (() => {
+          const endlessBest = parseInt(localStorage.getItem('ms_endless_best') || '0', 10);
+          return { ...(msStats || {}), endlessBest: endlessBest > 0 ? endlessBest : null };
+        })(),
+        formatStats: (s) => {
+          const parts = [];
+          if (s?.wins > 0) parts.push(`${s.wins} classic win${s.wins !== 1 ? 's' : ''}`);
+          if (s?.endlessBest) parts.push(`endless best: <span style="color:var(--gc-gold,#f0c040)">${s.endlessBest}</span>`);
+          return parts.join(' · ');
+        },
       },
       {
         id:     '2048',
@@ -296,6 +316,15 @@ const tetrisStats = (() => {
         stats:  (() => { const hs = parseInt(localStorage.getItem('si_hs') || '0', 10); return hs > 0 ? { highScore: hs } : null; })(),
         formatStats: (s) => s?.highScore != null ? `<span>best <span style="color:var(--gc-gold,#f0c040)">${s.highScore}</span></span>` : '',
       },
+      {
+        id:     'idle-clicker',
+        name:   'Idle Clicker',
+        icon:   '🖱️',
+        desc:   'Click to earn points. Buy upgrades. Never stop clicking.',
+        accent: '#39ff14',
+        stats:  idleClickerStats,
+        formatStats: (s) => s?.bestScore != null ? `<span>best <span style="color:var(--gc-gold,#f0c040)">${Math.floor(s.bestScore).toLocaleString()}</span></span>` : '',
+      },
     ];
 
     for (const g of games) {
@@ -327,9 +356,26 @@ const tetrisStats = (() => {
         ${statsHtml}
         <button class="gc-card-join-btn" style="margin-top:4px;align-self:flex-start">Play →</button>`;
 
+      if (g.id === 'minesweeper') {
+        const sd = card.querySelector('[style*="gc-mono"]');
+        if (sd) sd.id = 'sp-ms-stats';
+      }
       card.querySelector('.gc-card-join-btn').addEventListener('click', () => navigate(g.id));
       card.addEventListener('click', () => navigate(g.id));
       grid.appendChild(card);
+    }
+
+    // Live best-score updates from active SP games
+    const msStatsEl = grid.querySelector('#sp-ms-stats');
+    if (msStatsEl) {
+      const msMeta = games.find(g => g.id === 'minesweeper');
+      let msStatsCurrent = { ...(msMeta?.stats || {}) };
+      bestscoreHandler = (e) => {
+        if (e.detail?.game !== 'minesweeper') return;
+        msStatsCurrent = { ...msStatsCurrent, endlessBest: e.detail.score };
+        if (msMeta?.formatStats) msStatsEl.innerHTML = msMeta.formatStats(msStatsCurrent);
+      };
+      window.addEventListener('gamecenter:bestscore', bestscoreHandler);
     }
 
     // Guest warning below grid
@@ -359,7 +405,7 @@ const tetrisStats = (() => {
     }
   });
 
-  return { destroy() {} };
+  return { destroy() { if (bestscoreHandler) window.removeEventListener('gamecenter:bestscore', bestscoreHandler); } };
 }
 
 function formatTime(s) {

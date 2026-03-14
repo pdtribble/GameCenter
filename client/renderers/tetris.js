@@ -704,7 +704,7 @@ function gravityTick() {
   if (state.phase === 'over') {
     onGameOver();
   }
-}
+
 
   // Level up — restart gravity at new speed
   if (state.level !== prevLevel) {

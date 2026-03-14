@@ -13,7 +13,13 @@
       "Bash(cd C:\\\\Users\\\\Ptribble\\\\Desktop\\\\GameCenter:*)",
       "Bash(timeout 8 node:*)",
       "Bash(do node:*)",
-      "Bash(lsof:*)"
+      "Bash(lsof:*)",
+      "Bash(test:*)",
+      "Bash(grep:*)"
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "claude-flow"
+  ]
 }

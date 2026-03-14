@@ -56,7 +56,7 @@ app.use((req, res, next) => {
     const username = 'guest_' + crypto.randomBytes(4).toString('hex');
     db.prepare('INSERT INTO players (id, username, display_name, is_guest) VALUES (?, ?, ?, 1)')
       .run(guestId, username, 'Guest');
-    sessionManager.setSessionCookie(res, guestId);
+    sessionManager.setGuestCookie(res, guestId);
     req.cookies = { ...req.cookies, gc_session: guestId };
   }
   next();

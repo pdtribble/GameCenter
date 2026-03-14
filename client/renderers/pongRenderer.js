@@ -165,6 +165,10 @@ function loadProgress() {
       if (stats?.data) {
         highScore = Math.max(highScore, stats.data.highScore || 0);
         wins = stats.data.wins || 0;
+        const bestEl = document.getElementById('pong-best');
+        if (bestEl) bestEl.textContent = highScore;
+        const winsEl = document.getElementById('pong-wins');
+        if (winsEl) winsEl.textContent = wins;
       }
     }).catch(() => {});
   }
@@ -397,7 +401,7 @@ function handleKeyDown(e) {
     e.preventDefault();
     const overlay = containerEl.querySelector('#pong-overlay');
     if (overlay && !overlay.classList.contains('hidden')) {
-      const btn = containerEl.querySelector('#pong-start-btn') || 
+      const btn = containerEl.querySelector('#pong-start-btn') ||
                   containerEl.querySelector('#pong-replay-btn') ||
                   containerEl.querySelector('#pong-retry-btn');
       if (btn) btn.click();
@@ -407,6 +411,17 @@ function handleKeyDown(e) {
       state.wins = wins;
       state.phase = 'playing';
       gameLoop();
+    }
+  }
+
+  // ArrowUp / ArrowDown also start the game when the overlay is showing
+  if ((e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'w' || e.key === 'W' || e.key === 's' || e.key === 'S') && state) {
+    const overlay = containerEl.querySelector('#pong-overlay');
+    if (overlay && !overlay.classList.contains('hidden')) {
+      const btn = containerEl.querySelector('#pong-start-btn') ||
+                  containerEl.querySelector('#pong-replay-btn') ||
+                  containerEl.querySelector('#pong-retry-btn');
+      if (btn) btn.click();
     }
   }
 }
@@ -425,9 +440,8 @@ function setupCanvas() {
   canvasEl.width = w;
   canvasEl.height = h;
   
-  wrap.innerHTML = '';
   wrap.appendChild(canvasEl);
-  
+
   ctx = canvasEl.getContext('2d');
 }
 
@@ -435,10 +449,10 @@ export function render(container, options) {
   containerEl = container;
   navigateFn = options?.navigate || (() => {});
   playerId = options?.playerId || null;
-  
+
   injectStyles();
   loadProgress();
-  
+
   container.innerHTML = `
     <div id="pong-root">
       <div id="pong-header">

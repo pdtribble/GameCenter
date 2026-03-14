@@ -922,6 +922,7 @@ function startNewGame() {
 // ── High score persistence ────────────────────────────────────────────────────
 
 function saveHighScore() {
+  localStorage.setItem('pacman_hs', String(state.score));
   fetch('/api/sp/saves/pacman', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

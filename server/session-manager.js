@@ -128,13 +128,29 @@ function parseCookies(header) {
 }
 
 // ── Session cookie helpers (used by routes) ───────────────────────────────────
+
+// For registered (non-guest) users: persistent 30-day cookie.
+// sameSite:'lax' (not 'strict') so the cookie is sent on top-level cross-site
+// navigation (e.g. clicking a link from Discord/email). 'strict' would cause the
+// auto-guest middleware to fire on that first request and overwrite the session.
 function setSessionCookie(res, playerId) {
   const isProd = config.NODE_ENV === 'production';
   res.cookie('gc_session', playerId, {
     httpOnly: true,
-    sameSite: 'strict',
+    sameSite: 'lax',
     secure: isProd,
-    maxAge: 365 * 24 * 60 * 60 * 1000,
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+  });
+}
+
+// For ephemeral guest sessions: short-lived 1-day cookie.
+function setGuestCookie(res, guestId) {
+  const isProd = config.NODE_ENV === 'production';
+  res.cookie('gc_session', guestId, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: isProd,
+    maxAge: 24 * 60 * 60 * 1000, // 1 day
   });
 }
 
@@ -150,5 +166,6 @@ module.exports = {
   getPlayer,
   hashPin,
   setSessionCookie,
+  setGuestCookie,
   clearSessionCookie,
 };

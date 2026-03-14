@@ -178,6 +178,8 @@ function loadProgress() {
       const stats = saves.find(s => s.slot === 'stats');
       if (stats?.data?.highScore) {
         highScore = Math.max(highScore, stats.data.highScore);
+        const bestEl = document.getElementById('breakout-best');
+        if (bestEl) bestEl.textContent = highScore;
       }
     }).catch(() => {});
   }
@@ -413,9 +415,12 @@ function handleKeyDown(e) {
   
   if (e.key === ' ' && state) {
     const overlay = containerEl.querySelector('#breakout-overlay');
-    if (overlay && !overlay.classList.contains('hidden')) {
+    const startBtn = containerEl.querySelector('#breakout-start-btn');
+    if (overlay && !overlay.classList.contains('hidden') && startBtn) {
+      // Initial start overlay: dismiss, set playing, and launch ball in one press
       overlay.classList.add('hidden');
       state.phase = 'playing';
+      state = breakout.launchBall(state);
       if (!animationId) {
         gameLoop();
       }
@@ -439,9 +444,8 @@ function setupCanvas() {
   canvasEl.width = w;
   canvasEl.height = h;
   
-  wrap.innerHTML = '';
   wrap.appendChild(canvasEl);
-  
+
   ctx = canvasEl.getContext('2d');
 }
 
@@ -449,10 +453,10 @@ export function render(container, options) {
   containerEl = container;
   navigateFn = options?.navigate || (() => {});
   playerId = options?.playerId || null;
-  
+
   injectStyles();
   loadProgress();
-  
+
   container.innerHTML = `
     <div id="breakout-root">
       <div id="breakout-header">
