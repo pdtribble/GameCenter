@@ -1,7 +1,7 @@
 // Minesweeper renderer — dark phosphor-green terminal aesthetic
 // Self-contained: includes all game logic inline (no server-side imports).
 
-// ── Inline game logic (mirrors games/minesweeper/index.js) ───────────────────
+// ── Inline classic game logic ─────────────────────────────────────────────────
 
 function mulberry32(seed) {
   return function () {
@@ -143,58 +143,297 @@ function doChord(cs, x, y) {
   return { revealed: all, exploded: boom };
 }
 
-// Endless helpers
-function sectionKey(x, y) { return `${x},${y}`; }
-function chebyshev(x, y) { return Math.max(Math.abs(x), Math.abs(y)); }
-function minesFor(d) { return d === 0 ? 8 : d <= 2 ? 12 : d <= 5 ? 15 : 18; }
+// ── Endless mode (new) — 8×8 section-based canvas world ─────────────────────
 
-function makeSectionBoard(worldSeed, gx, gy, failCount) {
-  const mines = minesFor(chebyshev(gx, gy));
-  const seed = ((worldSeed ^ (gx * 73856093) ^ (gy * 19349663) ^ (failCount * 83492791)) >>> 0);
-  const rng = mulberry32(seed);
-  const b = makeBoard(9, 9); b.mineCount = mines; b.firstClickDone = true;
-  const pos = [];
-  for (let y = 0; y < 9; y++) for (let x = 0; x < 9; x++) pos.push({ x, y });
-  for (let i = pos.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [pos[i], pos[j]] = [pos[j], pos[i]]; }
-  for (let i = 0; i < mines; i++) b.cells[pos[i].y][pos[i].x].mine = true;
-  computeAdjacency(b);
-  return b;
+const EW_SS = 8;                    // section size in cells
+const EW_MINES = 10;                // mines per section
+const EW_CELL_MIN = 14, EW_CELL_MAX = 48, EW_CELL_DEFAULT = 28;
+const EW_NUM_COLORS = ['', '#58a6ff','#3fb950','#f85149','#1f6feb','#da3633','#2ea043','#8b949e','#30363d'];
+const EW_C = {
+  bgWorld: '#0d1117', locked: '#21262d', unrevealed: '#1c2128', revealed: '#0d1117',
+  borderInner: 'rgba(48,54,61,0.8)', borderSect: 'rgba(88,166,255,0.4)',
+  clearedDim: 'rgba(0,0,0,0.22)', failedDim: 'rgba(180,0,0,0.25)',
+  flag: '#f78166', mine: '#ff6b6b', text: '#e6edf3',
+};
+
+// ── Endless world logic functions ─────────────────────────────────────────────
+
+function ewToSect(x, y) {
+  const sX = Math.floor(x / EW_SS);
+  const sY = Math.floor(y / EW_SS);
+  const localX = ((x % EW_SS) + EW_SS) % EW_SS;
+  const localY = ((y % EW_SS) + EW_SS) % EW_SS;
+  return { sX, sY, localX, localY };
 }
 
-function newEndlessWorld(seed) {
-  const w = { seed, currentSection: { x: 0, y: 0 }, sections: {} };
-  w.sections[sectionKey(0, 0)] = { x: 0, y: 0, status: 'active', failCount: 0, board: makeSectionBoard(seed, 0, 0, 0) };
-  return w;
+function ewGetSect(world, sX, sY) {
+  const key = `${sX},${sY}`;
+  if (!world.sections.has(key)) {
+    world.sections.set(key, { sX, sY, status: (sX === 0 && sY === 0) ? 'active' : 'locked', resetCount: 0, mines: new Set() });
+  }
+  return world.sections.get(key);
 }
 
-function endlessClear(world, gx, gy) {
-  const k = sectionKey(gx, gy); if (!world.sections[k]) return;
-  world.sections[k].status = 'cleared'; world.sections[k].board = null;
-  for (const [dx, dy] of [[0,1],[0,-1],[1,0],[-1,0]]) {
-    const nk = sectionKey(gx + dx, gy + dy);
-    if (!world.sections[nk]) {
-      const nx = gx + dx, ny = gy + dy;
-      world.sections[nk] = { x: nx, y: ny, status: 'active', failCount: 0, board: makeSectionBoard(world.seed, nx, ny, 0) };
+function ewGenMines(world, sX, sY, resetCount, safeSet) {
+  let seed = world.seed ^ (sX * 1000003) ^ (sY * 999983);
+  if (resetCount > 0) seed ^= resetCount * 7919;
+  const rng = mulberry32(seed >>> 0);
+  const positions = [];
+  for (let i = 0; i < 64; i++) positions.push(i);
+  for (let i = 63; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [positions[i], positions[j]] = [positions[j], positions[i]];
+  }
+  const mines = new Set();
+  for (const pos of positions) {
+    if (mines.size >= EW_MINES) break;
+    const lx = pos % EW_SS, ly = Math.floor(pos / EW_SS);
+    if (!safeSet || !safeSet.has(`${lx},${ly}`)) mines.add(`${lx},${ly}`);
+  }
+  return mines;
+}
+
+function ewIsMine(world, x, y) {
+  const { sX, sY, localX, localY } = ewToSect(x, y);
+  const sect = world.sections.get(`${sX},${sY}`);
+  if (!sect || sect.status === 'locked') return false;
+  return sect.mines.has(`${localX},${localY}`);
+}
+
+function ewGetCell(world, x, y) {
+  const key = `${x},${y}`;
+  if (!world.cells.has(key)) {
+    world.cells.set(key, { x, y, mine: ewIsMine(world, x, y), adjacency: 0, state: 'hidden', flagged: false });
+  }
+  return world.cells.get(key);
+}
+
+function ewCalcAdj(world, x, y) {
+  const cell = ewGetCell(world, x, y);
+  if (cell.mine) return -1;
+  let count = 0;
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      if (ewIsMine(world, x + dx, y + dy)) count++;
+    }
+  }
+  cell.adjacency = count;
+  return count;
+}
+
+function ewReveal(world, sx, sy) {
+  const revealed = [];
+  const q = [{ x: sx, y: sy, dist: 0 }];
+  const seen = new Set([`${sx},${sy}`]);
+  while (q.length) {
+    const { x, y, dist } = q.shift();
+    const cell = ewGetCell(world, x, y);
+    if (cell.state === 'revealed' || cell.flagged || cell.mine) continue;
+    cell.state = 'revealed';
+    revealed.push({ x, y, dist });
+    ewCalcAdj(world, x, y);
+    if (cell.adjacency === 0) {
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = x + dx, ny = y + dy;
+          const { sX, sY } = ewToSect(nx, ny);
+          const ns = world.sections.get(`${sX},${sY}`);
+          if (!ns || ns.status === 'locked') continue;
+          const k = `${nx},${ny}`;
+          if (!seen.has(k) && !ewGetCell(world, nx, ny).flagged) {
+            seen.add(k);
+            q.push({ x: nx, y: ny, dist: dist + 1 });
+          }
+        }
+      }
+    }
+  }
+  return revealed;
+}
+
+function ewIsSectionCleared(world, sX, sY) {
+  const sect = ewGetSect(world, sX, sY);
+  for (let ly = 0; ly < EW_SS; ly++) {
+    for (let lx = 0; lx < EW_SS; lx++) {
+      const key = `${sX * EW_SS + lx},${sY * EW_SS + ly}`;
+      const cell = world.cells.get(key);
+      if (!cell) return false;
+      if (!cell.mine && cell.state !== 'revealed') return false;
+    }
+  }
+  return true;
+}
+
+function ewUnlockNeighbors(world, sX, sY) {
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      const nSX = sX + dx, nSY = sY + dy;
+      const ns = ewGetSect(world, nSX, nSY);
+      if (ns.status === 'locked') {
+        ns.status = 'active';
+        ns.mines = ewGenMines(world, nSX, nSY, 0, null);
+      }
     }
   }
 }
 
-function endlessFail(world, gx, gy) {
-  const k = sectionKey(gx, gy); if (!world.sections[k]) return;
-  const s = world.sections[k]; s.failCount++; s.status = 'active';
-  s.board = makeSectionBoard(world.seed, gx, gy, s.failCount);
+function ewRecalcBorders(world, sX, sY) {
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      const nSX = sX + dx, nSY = sY + dy;
+      const ns = world.sections.get(`${nSX},${nSY}`);
+      if (!ns || ns.status === 'locked') continue;
+      for (let lx = 0; lx < EW_SS; lx++) {
+        for (let ly = 0; ly < EW_SS; ly++) {
+          const x = nSX * EW_SS + lx, y = nSY * EW_SS + ly;
+          const cell = ewGetCell(world, x, y);
+          if (cell.state === 'revealed') ewCalcAdj(world, x, y);
+        }
+      }
+    }
+  }
+}
+
+function ewCheckClear(world, sX, sY) {
+  if (ewIsSectionCleared(world, sX, sY)) {
+    const sect = ewGetSect(world, sX, sY);
+    sect.status = 'cleared';
+    ewUnlockNeighbors(world, sX, sY);
+    ewRecalcBorders(world, sX, sY);
+    sect.clearTime = Date.now();
+  }
+}
+
+function ewFlag(world, x, y) {
+  const { sX, sY } = ewToSect(x, y);
+  const sect = ewGetSect(world, sX, sY);
+  if (sect.status === 'locked' || sect.status === 'failed') return;
+  const cell = ewGetCell(world, x, y);
+  cell.flagged = !cell.flagged;
+  if (cell.flagged) world.flagCount++;
+  else world.flagCount--;
+}
+
+function ewChord(world, x, y) {
+  const cell = ewGetCell(world, x, y);
+  if (cell.state !== 'revealed' || cell.adjacency <= 0) return { revealed: [], exploded: false };
+  let flagged = 0;
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      if (ewGetCell(world, x + dx, y + dy).flagged) flagged++;
+    }
+  }
+  if (flagged !== cell.adjacency) return { revealed: [], exploded: false };
+  let allRevealed = [], anyExploded = false;
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      const nx = x + dx, ny = y + dy;
+      const nc = ewGetCell(world, nx, ny);
+      if (nc.state === 'hidden' && !nc.flagged) {
+        if (nc.mine) { nc.state = 'revealed'; anyExploded = true; }
+        else {
+          const r = ewReveal(world, nx, ny);
+          allRevealed = allRevealed.concat(r);
+        }
+      }
+    }
+  }
+  return { revealed: allRevealed, exploded: anyExploded };
+}
+
+function ewRetry(world, sX, sY) {
+  const sect = ewGetSect(world, sX, sY);
+  sect.resetCount++;
+  sect.status = 'active';
+  sect.mines = ewGenMines(world, sX, sY, sect.resetCount, null);
+  for (let ly = 0; ly < EW_SS; ly++) {
+    for (let lx = 0; lx < EW_SS; lx++) {
+      const key = `${sX * EW_SS + lx},${sY * EW_SS + ly}`;
+      const cell = world.cells.get(key);
+      if (cell) {
+        cell.state = 'hidden';
+        cell.flagged = false;
+        cell.mine = ewIsMine(world, cell.x, cell.y);
+        cell.adjacency = 0;
+      }
+    }
+  }
+  world.failureUI = null;
+  ewRecalcBorders(world, sX, sY);
+}
+
+function ewNewWorld(seed) {
+  return {
+    seed: seed >>> 0,
+    sections: new Map(),
+    cells: new Map(),
+    phase: 'playing',
+    firstClick: true,
+    flagCount: 0,
+    failureUI: null,
+    startTime: null,
+  };
+}
+
+function ewSerialize(world, viewX, viewY, cellSize) {
+  const sections = {}, cells = {};
+  for (const [k, s] of world.sections) {
+    sections[k] = { sX: s.sX, sY: s.sY, status: s.status, resetCount: s.resetCount, mines: Array.from(s.mines) };
+  }
+  for (const [k, c] of world.cells) {
+    cells[k] = { x: c.x, y: c.y, mine: c.mine, adjacency: c.adjacency, state: c.state, flagged: c.flagged };
+  }
+  return { seed: world.seed, sections, cells, phase: world.phase, firstClick: world.firstClick, flagCount: world.flagCount, startTime: world.startTime, viewX, viewY, cellSize };
+}
+
+function ewDeserialize(data) {
+  if (!data?.seed) return null;
+  const world = ewNewWorld(data.seed);
+  world.phase = data.phase || 'playing';
+  world.firstClick = data.firstClick !== false;
+  world.flagCount = data.flagCount || 0;
+  world.startTime = data.startTime || null;
+  if (data.sections) {
+    for (const [k, s] of Object.entries(data.sections)) {
+      world.sections.set(k, { sX: s.sX, sY: s.sY, status: s.status, resetCount: s.resetCount, mines: new Set(s.mines) });
+    }
+  }
+  if (data.cells) {
+    for (const [k, c] of Object.entries(data.cells)) {
+      world.cells.set(k, { x: c.x, y: c.y, mine: c.mine, adjacency: c.adjacency, state: c.state, flagged: c.flagged });
+    }
+  }
+  return { world, viewX: data.viewX || 0, viewY: data.viewY || 0, cellSize: data.cellSize || EW_CELL_DEFAULT };
 }
 
 // ── Renderer state ────────────────────────────────────────────────────────────
 
-let containerEl = null;
+let containerEl   = null;
 let timerInterval = null;
-let classicState = null;
-let endlessWorld = null;
-let activeMode = null;       // 'classic' | 'endless'
+let classicState  = null;
+let activeMode    = null;
 let activeDifficulty = 'beginner';
-let currentSection = null;   // { x, y } for endless
-let optRef = null;
+let optRef        = null;
+
+let ewWorld       = null;
+let ewCanvas      = null;
+let ewCtx         = null;
+let ewRafId       = null;
+let ewDirty       = true;
+let ewAutoSaveId  = null;
+let ewCellSize    = EW_CELL_DEFAULT;
+let ewViewX       = 0;
+let ewViewY       = 0;
+let ewHoverCell   = null;
+let ewHoverSect   = null;
+let ewHandlers    = {};
+let ewFailRects   = null;
 
 // ── CSS injection ─────────────────────────────────────────────────────────────
 
@@ -258,6 +497,7 @@ function injectStyles() {
     .ms-hud-pill .ms-icon { font-size: 0.85rem; }
     #ms-flag-count { color: var(--ms-red); }
     #ms-timer { color: var(--ms-accent); }
+    #ms-revealed-count { color: #3fb950; }
     .ms-spacer { flex: 1; }
     #ms-reset-btn {
       background: var(--ms-accent);
@@ -359,7 +599,7 @@ function injectStyles() {
       background: var(--ms-surface);
       padding: 4px;
       border-radius: 8px;
-      box-shadow: 
+      box-shadow:
         0 4px 24px rgba(0,0,0,0.4),
         inset 0 1px 0 rgba(255,255,255,0.03);
     }
@@ -384,7 +624,7 @@ function injectStyles() {
       transition: all 0.08s;
       box-sizing: border-box;
       overflow: hidden;
-      box-shadow: 
+      box-shadow:
         inset 0 1px 0 rgba(255,255,255,0.08),
         inset 0 -1px 0 rgba(0,0,0,0.15);
     }
@@ -429,7 +669,6 @@ function injectStyles() {
     }
     .ms-cell.just-revealed { animation: ms-reveal 0.15s ease-out; }
 
-    /* Modern number colors */
     .ms-cell[data-num="1"] { color: #58a6ff; }
     .ms-cell[data-num="2"] { color: #3fb950; }
     .ms-cell[data-num="3"] { color: #f85149; }
@@ -439,7 +678,6 @@ function injectStyles() {
     .ms-cell[data-num="7"] { color: #8b949e; }
     .ms-cell[data-num="8"] { color: #6e7681; }
 
-    /* Overlay */
     #ms-overlay {
       position: absolute;
       inset: 0;
@@ -460,12 +698,12 @@ function injectStyles() {
       letter-spacing: 0.1em;
       text-transform: uppercase;
     }
-    #ms-overlay-title.win { 
-      color: var(--ms-green); 
+    #ms-overlay-title.win {
+      color: var(--ms-green);
       text-shadow: 0 0 30px rgba(63,185,80,0.5);
     }
-    #ms-overlay-title.lose { 
-      color: var(--ms-red); 
+    #ms-overlay-title.lose {
+      color: var(--ms-red);
       text-shadow: 0 0 30px rgba(248,81,73,0.5);
     }
     #ms-overlay-sub {
@@ -489,7 +727,6 @@ function injectStyles() {
     #ms-overlay-btn:hover { background: #79c0ff; transform: translateY(-2px); }
     #ms-overlay-btn:active { transform: scale(0.96); }
 
-    /* Win glow sweep */
     #ms-board.win-glow {
       animation: ms-win-glow 0.8s ease-out;
     }
@@ -499,7 +736,6 @@ function injectStyles() {
       100% { box-shadow: 0 4px 24px rgba(0,0,0,0.4); }
     }
 
-    /* Loss red pulse */
     #ms-board.loss-pulse::before {
       content: '';
       position: absolute;
@@ -514,57 +750,18 @@ function injectStyles() {
       100% { opacity: 0; }
     }
 
-    /* Endless map */
-    #ms-map-wrap {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 12px;
-      padding: 16px;
-      overflow: auto;
-    }
-    #ms-map { display: grid; gap: 4px; }
-    .ms-map-cell {
-      width: 32px; height: 32px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 0.65rem; font-family: var(--ms-font); font-weight: 600;
-      border: 1px solid var(--ms-cell-border);
-      background: var(--ms-cell-bg);
-      cursor: pointer;
-      border-radius: 6px;
-      transition: all 0.12s, transform 0.1s;
-      box-sizing: border-box;
-    }
-    .ms-map-cell.cleared { 
-      background: linear-gradient(135deg, #238636 0%, #2ea043 100%); 
-      border-color: #3fb950; 
-      color: #fff; 
-    }
-    .ms-map-cell.active { 
-      border-color: var(--ms-accent); 
-      color: var(--ms-accent);
-      box-shadow: 0 0 12px rgba(88,166,255,0.3);
-    }
-    .ms-map-cell.current { 
-      background: rgba(88,166,255,0.2); 
-      border-color: var(--ms-accent); 
-      color: #fff; 
-      font-weight: 700;
-    }
-    .ms-map-cell.locked { opacity: 0.25; cursor: default; }
-    .ms-map-cell:not(.locked):hover { 
-      background: var(--ms-cell-hover); 
-      transform: translateY(-2px);
-    }
-    .ms-map-label {
-      font-size: 0.68rem;
-      color: #484f58;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      margin-bottom: 4px;
-    }
+    #ms-ew-wrap { position: relative; flex: 1; overflow: hidden; display: none; }
+    #ms-ew-wrap.active { display: flex; }
+    #ms-ew-canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: crosshair; display: block; }
+    #ms-ew-canvas.panning { cursor: grabbing; }
+    #ms-ew-hud { position: absolute; top: 0; left: 0; right: 0; background: rgba(13,17,23,0.9);
+                  border-bottom: 1px solid rgba(88,166,255,0.2); padding: 8px 16px;
+                  font: 12px "DM Mono",monospace; color: #e6edf3; letter-spacing: 1px;
+                  display: flex; justify-content: space-between; align-items: center; z-index: 5; }
+    #ms-ew-coords { position: absolute; top: 40px; left: 0; right: 0; text-align: center; font-size: 10px;
+                    color: rgba(230,237,243,0.4); padding: 2px 16px; background: rgba(13,17,23,0.9);
+                    letter-spacing: 1px; z-index: 4; }
+
   `;
   document.head.appendChild(st);
 }
@@ -584,9 +781,18 @@ export function render(container, options) {
           <span class="ms-icon">🚩</span>
           <span id="ms-flag-count">0</span>
         </div>
+        <div class="ms-hud-pill" id="ms-sections-pill" style="display:none">
+          <span class="ms-icon">🔓</span>
+          <span id="ms-sections-cleared">0</span>
+          <span style="color:rgba(57,255,20,0.5)">SECTIONS</span>
+        </div>
         <div class="ms-hud-pill">
           <span class="ms-icon">⏱</span>
           <span id="ms-timer">00:00</span>
+        </div>
+        <div class="ms-hud-pill" id="ms-revealed-pill" style="display:none">
+          <span class="ms-icon" id="ms-revealed-icon">⛏</span>
+          <span id="ms-revealed-count">0</span>
         </div>
         <div class="ms-spacer"></div>
         <button id="ms-reset-btn">RESET</button>
@@ -598,7 +804,7 @@ export function render(container, options) {
           <button class="ms-mode-btn active" data-mode="classic" data-diff="beginner">Beginner 9×9</button>
           <button class="ms-mode-btn" data-mode="classic" data-diff="intermediate">Intermediate 16×16</button>
           <button class="ms-mode-btn" data-mode="classic" data-diff="expert">Expert 30×16</button>
-          <span class="ms-section-label" style="margin-top:6px">Endless</span>
+          <span class="ms-section-label">Endless</span>
           <button class="ms-mode-btn" data-mode="endless">Endless World</button>
         </div>
         <div id="ms-board-wrap">
@@ -609,49 +815,55 @@ export function render(container, options) {
             <button id="ms-overlay-btn">PLAY AGAIN</button>
           </div>
         </div>
+        <div id="ms-ew-wrap">
+          <canvas id="ms-ew-canvas"></canvas>
+          <div id="ms-ew-hud"></div>
+          <div id="ms-ew-coords"></div>
+        </div>
       </div>
     </div>`;
 
-  // Try to restore saves
-  const saves = options?.initialSave || {};
-  if (saves.endless) {
-    try { endlessWorld = JSON.parse(typeof saves.endless === 'string' ? saves.endless : JSON.stringify(saves.endless)); } catch (e) { endlessWorld = null; }
+  // Restore endless save if available
+  const ewSaveData = options?.initialSave?.endless;
+  if (ewSaveData) {
+    try {
+      const d = typeof ewSaveData === 'string' ? JSON.parse(ewSaveData) : ewSaveData;
+      if (d?.seed) {
+        const r = ewDeserialize(d);
+        if (r) { ewWorld = r.world; ewViewX = r.viewX; ewViewY = r.viewY; ewCellSize = r.cellSize || EW_CELL_DEFAULT; }
+      }
+    } catch(e) {}
   }
 
-  // Wire events
+  // Wire sidebar
   const sidebar = container.querySelector('#ms-sidebar');
   sidebar.addEventListener('click', e => {
     const btn = e.target.closest('.ms-mode-btn');
     if (!btn) return;
-    const mode = btn.dataset.mode;
-    const diff = btn.dataset.diff;
     sidebar.querySelectorAll('.ms-mode-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    if (mode === 'classic') startClassic(diff || 'beginner');
-    else if (mode === 'endless') startEndless();
+    if (btn.dataset.mode === 'classic') startClassic(btn.dataset.diff || 'beginner');
+    else if (btn.dataset.mode === 'endless') startEndless();
   });
 
   container.querySelector('#ms-reset-btn').addEventListener('click', () => {
     if (activeMode === 'classic') startClassic(activeDifficulty);
-    else if (activeMode === 'endless') startEndless(true);
   });
 
   container.querySelector('#ms-home-btn').addEventListener('click', () => {
     if (options?.navigate) options.navigate('singleplayer');
   });
 
+  // Classic overlay btn (endless has its own death overlay)
   container.querySelector('#ms-overlay-btn').addEventListener('click', () => {
     if (activeMode === 'classic') startClassic(activeDifficulty);
-    else if (activeMode === 'endless') startEndless(true);
   });
 
-  // Board delegated listener
+  // Board delegated listeners for classic mode
   const boardEl = container.querySelector('#ms-board');
   boardEl.addEventListener('click', onBoardClick);
   boardEl.addEventListener('contextmenu', onBoardRightClick);
-  // Touch hold for flag on mobile
-  let touchTimer = null;
-  let touchMoved = false;
+  let touchTimer = null, touchMoved = false;
   boardEl.addEventListener('touchstart', e => {
     touchMoved = false;
     const cell = e.target.closest('.ms-cell');
@@ -663,7 +875,6 @@ export function render(container, options) {
   boardEl.addEventListener('touchmove', () => { touchMoved = true; if (touchTimer) { clearTimeout(touchTimer); touchTimer = null; } }, { passive: true });
   boardEl.addEventListener('touchend', () => { if (touchTimer) { clearTimeout(touchTimer); touchTimer = null; } });
 
-  // Default start
   startClassic('beginner');
 }
 
@@ -673,6 +884,16 @@ function startClassic(difficulty) {
   stopTimer();
   activeMode = 'classic';
   activeDifficulty = difficulty;
+
+  const rb = containerEl?.querySelector('#ms-reset-btn');
+  if (rb) rb.style.display = '';
+  const rp = containerEl?.querySelector('#ms-revealed-pill');
+  if (rp) rp.style.display = 'none';
+
+  // Restore board-wrap padding for classic
+  const bw = containerEl?.querySelector('#ms-board-wrap');
+  if (bw) { bw.style.padding = ''; bw.style.alignItems = ''; bw.style.justifyContent = ''; }
+
   classicState = newClassicState(difficulty);
   hideOverlay();
   showBoard();
@@ -685,40 +906,25 @@ function onBoardClick(e) {
   if (!cell) return;
   const x = parseInt(cell.dataset.x), y = parseInt(cell.dataset.y);
   if (activeMode === 'classic') handleClassicClick(x, y);
-  else if (activeMode === 'endless') handleEndlessClick(x, y);
 }
 
 function onBoardRightClick(e) {
   e.preventDefault();
   const cell = e.target.closest('.ms-cell');
   if (!cell) return;
-  const x = parseInt(cell.dataset.x), y = parseInt(cell.dataset.y);
-  flagCell(x, y);
+  flagCell(parseInt(cell.dataset.x), parseInt(cell.dataset.y));
 }
 
 function flagCell(x, y) {
-  if (activeMode === 'classic') {
-    if (!classicState || classicState.board.state !== 'playing') return;
-    doToggleFlag(classicState, x, y);
-    const c = classicState.board.cells[y][x];
-    const el = getCellEl(x, y);
-    if (el) {
-      el.className = 'ms-cell' + (c.state === 'flagged' ? ' flagged' : '');
-      el.textContent = c.state === 'flagged' ? '⚑' : '';
-    }
-    updateHUD();
-  } else if (activeMode === 'endless') {
-    const sect = getActiveSection();
-    if (!sect?.board || sect.board.state !== 'playing') return;
-    doToggleFlag({ board: sect.board }, x, y);
-    const c = sect.board.cells[y][x];
-    const el = getCellEl(x, y);
-    if (el) {
-      el.className = 'ms-cell' + (c.state === 'flagged' ? ' flagged' : '');
-      el.textContent = c.state === 'flagged' ? '⚑' : '';
-    }
-    updateHUD();
+  if (activeMode !== 'classic' || !classicState || classicState.board.state !== 'playing') return;
+  doToggleFlag(classicState, x, y);
+  const c = classicState.board.cells[y][x];
+  const el = getCellEl(x, y);
+  if (el) {
+    el.className = 'ms-cell' + (c.state === 'flagged' ? ' flagged' : '');
+    el.textContent = c.state === 'flagged' ? '⚑' : '';
   }
+  updateHUD();
 }
 
 function handleClassicClick(x, y) {
@@ -756,10 +962,7 @@ function onClassicWin() {
   const elapsed = b.endTime && b.startTime ? Math.round((b.endTime - b.startTime) / 1000) : 0;
   renderBoard();
   const board = containerEl.querySelector('#ms-board');
-  if (board) {
-    board.classList.add('win-glow');
-    setTimeout(() => board.classList.remove('win-glow'), 800);
-  }
+  if (board) { board.classList.add('win-glow'); setTimeout(() => board.classList.remove('win-glow'), 800); }
   showOverlay('✓ CLEARED', `Time: ${formatTime(elapsed)}`, 'PLAY AGAIN');
   optRef?.onGameEnd?.('classic', 'win', { difficulty: activeDifficulty, timeSeconds: elapsed });
 }
@@ -768,201 +971,369 @@ function onClassicLose(hx, hy) {
   stopTimer();
   renderBoard(hx, hy);
   const board = containerEl.querySelector('#ms-board');
-  if (board) {
-    board.classList.add('shake', 'loss-pulse');
-    setTimeout(() => board.classList.remove('shake', 'loss-pulse'), 300);
-  }
+  if (board) { board.classList.add('shake', 'loss-pulse'); setTimeout(() => board.classList.remove('shake', 'loss-pulse'), 300); }
   showOverlay('✗ BOOM', 'A mine was triggered.', 'TRY AGAIN');
   optRef?.onGameEnd?.('classic', 'lose', { difficulty: activeDifficulty });
 }
 
-// ── Endless game flow ─────────────────────────────────────────────────────────
+// ── Endless mode (new) — canvas rendering & input ───────────────────────────
 
 function startEndless(reset) {
   stopTimer();
   activeMode = 'endless';
-  if (reset || !endlessWorld) {
-    endlessWorld = newEndlessWorld((Date.now() ^ (Math.random() * 0x7fffffff | 0)) >>> 0);
+
+  const rb = containerEl?.querySelector('#ms-reset-btn');
+  if (rb) rb.style.display = 'none';
+  const rp = containerEl?.querySelector('#ms-revealed-pill');
+  if (rp) rp.style.display = 'none';
+
+  ewStop();
+
+  const wrap = containerEl?.querySelector('#ms-ew-wrap');
+  if (!wrap) return;
+  wrap.classList.add('active');
+
+  if (reset || !ewWorld) {
+    ewWorld = ewNewWorld(Math.random() * 0x100000000 >>> 0);
+    ewWorld.sections.set('0,0', { sX: 0, sY: 0, status: 'active', resetCount: 0, mines: new Set() });
+    ewCellSize = EW_CELL_DEFAULT;
+    ewViewX = 0;
+    ewViewY = 0;
   }
-  currentSection = { ...endlessWorld.currentSection };
-  hideOverlay();
-  showEndlessMap();
-  updateHUD();
+
+  ewCanvas = wrap.querySelector('#ms-ew-canvas');
+  ewCtx = ewCanvas.getContext('2d', { alpha: false });
+  ewDirty = true;
+  ewFailRects = null;
+
+  ewInitInput();
+  ewRenderLoop();
+  ewStartAutoSave();
 }
 
-function showEndlessMap() {
-  const boardWrap = containerEl.querySelector('#ms-board-wrap');
-  boardWrap.innerHTML = `
-    <div id="ms-map-wrap">
-      <div class="ms-map-label">World Map — click a section to play</div>
-      <div id="ms-map"></div>
-    </div>
-    <div id="ms-overlay" style="display:none">
-      <div id="ms-overlay-title"></div>
-      <div id="ms-overlay-sub"></div>
-      <button id="ms-overlay-btn">RETRY</button>
-    </div>`;
-
-  boardWrap.querySelector('#ms-overlay-btn').addEventListener('click', () => {
-    if (activeMode === 'endless') {
-      const s = getActiveSection();
-      if (s) { endlessFail(endlessWorld, currentSection.x, currentSection.y); saveEndless(); }
-      hideOverlay(); showEndlessBoard();
+function ewStop() {
+  if (ewRafId) { cancelAnimationFrame(ewRafId); ewRafId = null; }
+  if (ewCanvas) {
+    for (const [evt, handler] of Object.entries(ewHandlers)) {
+      ewCanvas.removeEventListener(evt, handler);
     }
-  });
-
-  renderEndlessMap();
-  boardWrap.querySelector('#ms-map').addEventListener('click', e => {
-    const mc = e.target.closest('.ms-map-cell');
-    if (!mc || mc.classList.contains('locked')) return;
-    const gx = parseInt(mc.dataset.gx), gy = parseInt(mc.dataset.gy);
-    currentSection = { x: gx, y: gy };
-    endlessWorld.currentSection = { x: gx, y: gy };
-    showEndlessBoard();
-  });
+    ewHandlers = {};
+  }
+  const wrap = containerEl?.querySelector('#ms-ew-wrap');
+  if (wrap) wrap.classList.remove('active');
 }
 
-function renderEndlessMap() {
-  const mapEl = containerEl.querySelector('#ms-map');
-  if (!mapEl) return;
+function ewRenderLoop() {
+  const wrap = containerEl?.querySelector('#ms-ew-wrap');
+  if (!wrap || !ewCanvas) return;
 
-  // Find bounds of known sections
-  let minX = 0, maxX = 0, minY = 0, maxY = 0;
-  for (const key of Object.keys(endlessWorld.sections)) {
-    const { x, y } = endlessWorld.sections[key];
-    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
-    minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+  const dpr = window.devicePixelRatio || 1;
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  if (ewCanvas.width !== w * dpr || ewCanvas.height !== h * dpr) {
+    ewCanvas.width = w * dpr;
+    ewCanvas.height = h * dpr;
+    ewCtx.scale(dpr, dpr);
+    ewDirty = true;
   }
-  // Pad by 1
-  minX--; maxX++; minY--; maxY++;
 
-  const cols = maxX - minX + 1;
-  const rows = maxY - minY + 1;
-  mapEl.style.gridTemplateColumns = `repeat(${cols}, 32px)`;
-  mapEl.style.gridTemplateRows = `repeat(${rows}, 32px)`;
-  mapEl.innerHTML = '';
+  if (ewDirty) {
+    ewDraw();
+    ewDirty = false;
+  }
+  ewRafId = requestAnimationFrame(ewRenderLoop);
+}
 
-  for (let r = minY; r <= maxY; r++) {
-    for (let c = minX; c <= maxX; c++) {
-      const el = document.createElement('div');
-      el.className = 'ms-map-cell';
-      el.dataset.gx = c; el.dataset.gy = r;
-      const key = sectionKey(c, r);
-      const sect = endlessWorld.sections[key];
-      if (!sect) { el.classList.add('locked'); el.textContent = '·'; }
-      else if (sect.status === 'cleared') { el.classList.add('cleared'); el.textContent = '✓'; }
-      else {
-        el.classList.add('active');
-        if (currentSection.x === c && currentSection.y === r) el.classList.add('current');
-        el.textContent = minesFor(chebyshev(c, r));
-      }
-      mapEl.appendChild(el);
+function ewDraw() {
+  if (!ewCtx || !ewCanvas || !ewWorld) return;
+  const w = ewCanvas.width / (window.devicePixelRatio || 1);
+  const h = ewCanvas.height / (window.devicePixelRatio || 1);
+
+  ewCtx.fillStyle = EW_C.bgWorld;
+  ewCtx.fillRect(0, 0, w, h);
+
+  const minSX = Math.floor((ewViewX - 0) / EW_SS);
+  const maxSX = Math.ceil((ewViewX + w / ewCellSize) / EW_SS);
+  const minSY = Math.floor((ewViewY - 0) / EW_SS);
+  const maxSY = Math.ceil((ewViewY + h / ewCellSize) / EW_SS);
+
+  ewFailRects = null;
+  for (let sX = minSX; sX <= maxSX; sX++) {
+    for (let sY = minSY; sY <= maxSY; sY++) {
+      const px = (sX * EW_SS - ewViewX) * ewCellSize;
+      const py = (sY * EW_SS - ewViewY) * ewCellSize;
+      ewDrawSection(sX, sY, px, py);
     }
   }
+
+  ewCtx.strokeStyle = EW_C.borderSect;
+  ewCtx.lineWidth = 1.5;
+  for (let sX = minSX; sX <= maxSX; sX++) {
+    for (let sY = minSY; sY <= maxSY; sY++) {
+      const px = (sX * EW_SS - ewViewX) * ewCellSize;
+      const py = (sY * EW_SS - ewViewY) * ewCellSize;
+      const sz = EW_SS * ewCellSize;
+      ewCtx.strokeRect(px, py, sz, sz);
+    }
+  }
+
+  ewUpdateHUD();
 }
 
-function showEndlessBoard() {
-  const boardWrap = containerEl.querySelector('#ms-board-wrap');
-  const sect = getActiveSection();
-  if (!sect || sect.status === 'cleared') { showEndlessMap(); return; }
+function ewDrawSection(sX, sY, px, py) {
+  const sect = ewWorld.sections.get(`${sX},${sY}`);
+  const sz = EW_SS * ewCellSize;
 
-  boardWrap.innerHTML = `
-    <div id="ms-board"></div>
-    <div id="ms-overlay" style="display:none">
-      <div id="ms-overlay-title"></div>
-      <div id="ms-overlay-sub"></div>
-      <button id="ms-overlay-btn">RETRY</button>
-    </div>`;
-
-  const boardEl = boardWrap.querySelector('#ms-board');
-  boardEl.addEventListener('click', onBoardClick);
-  boardEl.addEventListener('contextmenu', onBoardRightClick);
-
-  // Touch hold for flags
-  let tt = null, tm = false;
-  boardEl.addEventListener('touchstart', e => {
-    tm = false;
-    const cell = e.target.closest('.ms-cell');
-    if (!cell) return;
-    tt = setTimeout(() => { if (!tm) flagCell(parseInt(cell.dataset.x), parseInt(cell.dataset.y)); }, 500);
-  }, { passive: true });
-  boardEl.addEventListener('touchmove', () => { tm = true; if (tt) { clearTimeout(tt); tt = null; } }, { passive: true });
-  boardEl.addEventListener('touchend', () => { if (tt) { clearTimeout(tt); tt = null; } });
-
-  boardWrap.querySelector('#ms-overlay-btn').addEventListener('click', () => {
-    endlessFail(endlessWorld, currentSection.x, currentSection.y);
-    saveEndless();
-    hideOverlay();
-    showEndlessBoard();
-  });
-
-  if (!sect.board.startTime) sect.board.startTime = Date.now();
-  startTimer(() => updateHUD());
-  renderBoard();
-  updateHUD();
-}
-
-function handleEndlessClick(x, y) {
-  const sect = getActiveSection();
-  if (!sect?.board) return;
-  const b = sect.board;
-  if (b.state !== 'playing') return;
-  const c = b.cells[y][x];
-
-  const cs = { board: b };
-  if (c.state === 'revealed') {
-    const { revealed, exploded } = doChord(cs, x, y);
-    animateReveal(revealed);
-    if (exploded) onEndlessLose();
-    else if (checkWin(b)) onEndlessWin();
+  if (!sect || sect.status === 'locked') {
+    ewCtx.fillStyle = EW_C.locked;
+    ewCtx.fillRect(px, py, sz, sz);
     return;
   }
 
-  const { revealed, exploded } = doReveal(cs, x, y);
-  animateReveal(revealed);
-  if (exploded) onEndlessLose();
-  else if (checkWin(b)) onEndlessWin();
-  updateHUD();
+  for (let ly = 0; ly < EW_SS; ly++) {
+    for (let lx = 0; lx < EW_SS; lx++) {
+      const x = sX * EW_SS + lx, y = sY * EW_SS + ly;
+      const cpx = px + lx * ewCellSize, cpy = py + ly * ewCellSize;
+      ewDrawCell(x, y, cpx, cpy);
+    }
+  }
+
+  if (sect.status === 'cleared') {
+    ewCtx.fillStyle = EW_C.clearedDim;
+    ewCtx.fillRect(px, py, sz, sz);
+  }
+  if (sect.status === 'failed') {
+    ewCtx.fillStyle = EW_C.failedDim;
+    ewCtx.fillRect(px, py, sz, sz);
+  }
 }
 
-function onEndlessWin() {
-  stopTimer();
-  const sect = getActiveSection();
-  const b = sect?.board;
-  const elapsed = b?.endTime && b?.startTime ? Math.round((b.endTime - b.startTime) / 1000) : 0;
-  renderBoard();
-  showOverlay('✓ SECTION CLEAR', `${minesFor(chebyshev(currentSection.x, currentSection.y))} mines defused in ${formatTime(elapsed)}`, 'MAP');
-  endlessClear(endlessWorld, currentSection.x, currentSection.y);
-  saveEndless();
-  optRef?.onGameEnd?.('endless', 'win', { section: currentSection, timeSeconds: elapsed });
-  containerEl.querySelector('#ms-overlay-btn').onclick = () => { hideOverlay(); showEndlessMap(); };
+function ewDrawCell(x, y, px, py) {
+  const cs = ewCellSize;
+  const cell = ewGetCell(ewWorld, x, y);
+
+  if (!cell.flagged && cell.state === 'hidden') {
+    ewCtx.fillStyle = EW_C.unrevealed;
+    ewCtx.fillRect(px, py, cs, cs);
+    ewCtx.fillStyle = 'rgba(255,255,255,0.06)';
+    ewCtx.fillRect(px, py, cs, 1);
+    ewCtx.fillRect(px, py, 1, cs);
+    return;
+  }
+
+  if (cell.flagged) {
+    ewCtx.fillStyle = EW_C.unrevealed;
+    ewCtx.fillRect(px, py, cs, cs);
+    const fx = px + cs / 2, fy = py + cs / 3;
+    ewCtx.fillStyle = EW_C.flag;
+    ewCtx.beginPath();
+    ewCtx.moveTo(fx - 2, fy);
+    ewCtx.lineTo(fx + 2, fy);
+    ewCtx.lineTo(fx + 2, fy + 4);
+    ewCtx.lineTo(fx - 2, fy + 4);
+    ewCtx.closePath();
+    ewCtx.fill();
+    return;
+  }
+
+  if (cell.state !== 'revealed') return;
+
+  ewCtx.fillStyle = EW_C.revealed;
+  ewCtx.fillRect(px, py, cs, cs);
+
+  if (cell.mine) {
+    ewCtx.fillStyle = EW_C.mine;
+    ewCtx.beginPath();
+    ewCtx.arc(px + cs / 2, py + cs / 2, cs / 4, 0, Math.PI * 2);
+    ewCtx.fill();
+    return;
+  }
+
+  if (cell.adjacency > 0) {
+    ewCtx.fillStyle = EW_NUM_COLORS[Math.min(cell.adjacency, 8)];
+    ewCtx.font = `bold ${Math.floor(cs * 0.6)}px DM Mono`;
+    ewCtx.textAlign = 'center';
+    ewCtx.textBaseline = 'middle';
+    ewCtx.fillText(cell.adjacency, px + cs / 2, py + cs / 2);
+  }
 }
 
-function onEndlessLose() {
-  stopTimer();
-  const sect = getActiveSection();
-  if (sect) { sect.board.endTime = Date.now(); }
-  renderBoard();
-  showOverlay('✗ DETONATED', `Fail #${(getActiveSection()?.failCount || 0) + 1} — board regenerated`, 'RETRY');
-  containerEl.querySelector('#ms-overlay-btn').onclick = () => {
-    endlessFail(endlessWorld, currentSection.x, currentSection.y);
-    saveEndless();
-    hideOverlay();
-    showEndlessBoard();
+function ewInitInput() {
+  if (!ewCanvas) return;
+
+  let panX = 0, panY = 0, panning = false;
+
+  ewHandlers.mousedown = e => {
+    const rect = ewCanvas.getBoundingClientRect();
+    panX = e.clientX - rect.left;
+    panY = e.clientY - rect.top;
+    panning = false;
   };
+
+  ewHandlers.mousemove = e => {
+    const rect = ewCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    if (e.buttons === 1 && panX !== undefined) {
+      const dx = (x - panX) / ewCellSize;
+      const dy = (y - panY) / ewCellSize;
+      if (Math.abs(dx) > 0.2 || Math.abs(dy) > 0.2) panning = true;
+      if (panning) {
+        ewViewX -= dx;
+        ewViewY -= dy;
+        panX = x;
+        panY = y;
+        ewCanvas.classList.add('panning');
+        ewDirty = true;
+      }
+    }
+
+    const cx = ewViewX + x / ewCellSize;
+    const cy = ewViewY + y / ewCellSize;
+    ewHoverCell = { x: Math.floor(cx), y: Math.floor(cy) };
+    const { sX, sY } = ewToSect(ewHoverCell.x, ewHoverCell.y);
+    ewHoverSect = { sX, sY };
+    ewDirty = true;
+  };
+
+  ewHandlers.mouseup = () => {
+    ewCanvas.classList.remove('panning');
+    panning = false;
+    panX = undefined;
+  };
+
+  ewHandlers.mouseleave = () => {
+    ewCanvas.classList.remove('panning');
+    panning = false;
+    ewHoverCell = null;
+    ewHoverSect = null;
+    ewDirty = true;
+  };
+
+  ewHandlers.contextmenu = e => {
+    e.preventDefault();
+    const rect = ewCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const cx = ewViewX + x / ewCellSize;
+    const cy = ewViewY + y / ewCellSize;
+    ewFlag(ewWorld, Math.floor(cx), Math.floor(cy));
+    ewDirty = true;
+  };
+
+  ewHandlers.wheel = e => {
+    e.preventDefault();
+    const rect = ewCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const cx = ewViewX + x / ewCellSize;
+    const cy = ewViewY + y / ewCellSize;
+    const newSize = Math.max(EW_CELL_MIN, Math.min(EW_CELL_MAX, ewCellSize - e.deltaY * 0.01));
+    ewCellSize = newSize;
+    ewViewX = cx - x / ewCellSize;
+    ewViewY = cy - y / ewCellSize;
+    ewDirty = true;
+  };
+
+  ewHandlers.click = e => {
+    const rect = ewCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    if (ewFailRects) {
+      for (const r of ewFailRects) {
+        if (x >= r.retryX && x <= r.retryX + r.retryW && y >= r.retryY && y <= r.retryY + r.retryH) {
+          ewRetry(ewWorld, r.sX, r.sY);
+          ewDirty = true;
+          return;
+        }
+        if (x >= r.leaveX && x <= r.leaveX + r.leaveW && y >= r.leaveY && y <= r.leaveY + r.leaveH) {
+          ewWorld.failureUI = null;
+          ewDirty = true;
+          return;
+        }
+      }
+    }
+
+    const cx = ewViewX + x / ewCellSize;
+    const cy = ewViewY + y / ewCellSize;
+    ewHandleClick(Math.floor(cx), Math.floor(cy));
+  };
+
+  for (const [evt, handler] of Object.entries(ewHandlers)) {
+    ewCanvas.addEventListener(evt, handler, evt === 'wheel' || evt === 'contextmenu' ? { passive: false } : {});
+  }
 }
 
-function getActiveSection() {
-  if (!endlessWorld || !currentSection) return null;
-  return endlessWorld.sections[sectionKey(currentSection.x, currentSection.y)] || null;
+function ewHandleClick(x, y) {
+  if (!ewWorld) return;
+  const { sX, sY } = ewToSect(x, y);
+  const sect = ewWorld.sections.get(`${sX},${sY}`);
+  if (!sect || sect.status === 'locked' || sect.status === 'failed') return;
+
+  const cell = ewGetCell(ewWorld, x, y);
+
+  if (ewWorld.firstClick) {
+    ewWorld.firstClick = false;
+    ewWorld.startTime = Date.now();
+    const safe = new Set();
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const { sX: sx, sY: sy, localX: lx, localY: ly } = ewToSect(x + dx, y + dy);
+        safe.add(`${lx},${ly}`);
+      }
+    }
+    sect.mines = ewGenMines(ewWorld, sX, sY, 0, safe);
+    for (const [k, c] of ewWorld.cells) {
+      c.mine = ewIsMine(ewWorld, c.x, c.y);
+    }
+    startTimer(() => ewUpdateHUD());
+  }
+
+  if (cell.flagged || cell.mine) return;
+
+  if (cell.state === 'revealed' && cell.adjacency > 0) {
+    const r = ewChord(ewWorld, x, y);
+    if (r.exploded) {
+      sect.status = 'failed';
+      ewWorld.failureUI = { sX, sY };
+    }
+  } else if (cell.state === 'hidden') {
+    if (cell.mine) {
+      cell.state = 'revealed';
+      sect.status = 'failed';
+      ewWorld.failureUI = { sX, sY };
+    } else {
+      ewReveal(ewWorld, x, y);
+      ewCheckClear(ewWorld, sX, sY);
+    }
+  }
+  ewDirty = true;
 }
 
-function saveEndless() {
-  if (!endlessWorld) return;
-  optRef?.onSave?.('endless', endlessWorld);
+function ewUpdateHUD() {
+  const hud = containerEl?.querySelector('#ms-ew-hud');
+  const coord = containerEl?.querySelector('#ms-ew-coords');
+  if (hud && ewWorld) {
+    const cleared = Array.from(ewWorld.sections.values()).filter(s => s.status === 'cleared').length;
+    hud.textContent = `🚩 ${ewWorld.flagCount} | 🔓 ${cleared} sections | ⏱ ${formatTime(ewWorld.startTime ? Math.floor((Date.now() - ewWorld.startTime) / 1000) : 0)}`;
+  }
+  if (coord && ewHoverCell) {
+    coord.textContent = `[${ewHoverCell.x}, ${ewHoverCell.y}] @ section (${ewHoverSect.sX}, ${ewHoverSect.sY})`;
+  }
 }
 
-// ── Board rendering ───────────────────────────────────────────────────────────
+function ewStartAutoSave() {
+  ewAutoSaveId = setInterval(() => ewSave(), 30000);
+}
+
+function ewSave() {
+  if (ewWorld) {
+    optRef?.onSave?.('endless', ewSerialize(ewWorld, ewViewX, ewViewY, ewCellSize));
+  }
+}
+
+// ── Classic board rendering ───────────────────────────────────────────────────
 
 function showBoard() {
   const bw = containerEl.querySelector('#ms-board-wrap');
@@ -987,26 +1358,18 @@ function showBoard() {
   boardEl.addEventListener('touchend', () => { if (tt) { clearTimeout(tt); tt = null; } });
   bw.querySelector('#ms-overlay-btn').addEventListener('click', () => {
     if (activeMode === 'classic') startClassic(activeDifficulty);
-    else if (activeMode === 'endless') startEndless(true);
   });
 }
 
-function getActiveBoard() {
-  if (activeMode === 'classic') return classicState?.board;
-  if (activeMode === 'endless') return getActiveSection()?.board;
-  return null;
-}
-
 function renderBoard(explodedX, explodedY) {
-  const b = getActiveBoard();
+  const b = classicState?.board;
   if (!b) return;
   const boardEl = containerEl.querySelector('#ms-board');
   if (!boardEl) return;
 
   const cs = computeCellSize(b.width, b.height);
-
   boardEl.style.gridTemplateColumns = `repeat(${b.width}, ${cs}px)`;
-  boardEl.style.gridTemplateRows = `repeat(${b.height}, ${cs}px)`;
+  boardEl.style.gridTemplateRows    = `repeat(${b.height}, ${cs}px)`;
   boardEl.innerHTML = '';
 
   const frag = document.createDocumentFragment();
@@ -1030,47 +1393,37 @@ function applyCellContent(el, c, isExploded) {
   el.removeAttribute('data-num');
   el.textContent = '';
   if (c.state === 'hidden') return;
-  if (c.state === 'flagged') {
-    el.classList.add('flagged');
-    el.textContent = '🚩';
-    return;
-  }
-  // revealed
+  if (c.state === 'flagged') { el.classList.add('flagged'); el.textContent = '⚑'; return; }
   el.classList.add('revealed');
   if (c.mine) {
-    if (isExploded) el.classList.add('mine-hit');
-    else el.classList.add('mine-shown');
+    el.classList.add(isExploded ? 'mine-hit' : 'mine-shown');
     el.textContent = '💣';
     return;
   }
   if (c.adjacency > 0) {
     el.textContent = c.adjacency;
-    el.setAttribute('data-num', c.adjacency);
+    el.setAttribute('data-num', Math.min(c.adjacency, 8));
   }
 }
 
 function updateCells(changedCells) {
-  // changedCells: [{x, y}] — only patch those divs
-  const b = getActiveBoard();
+  const b = classicState?.board;
   if (!b) return;
   for (const { x, y } of changedCells) {
     const el = getCellEl(x, y);
     if (!el) continue;
-    const c = b.cells[y][x];
-    applyCellContent(el, c, false);
+    applyCellContent(el, b.cells[y][x], false);
   }
 }
 
 function animateReveal(revealed) {
-  const b = getActiveBoard();
+  const b = classicState?.board;
   if (!b) return;
   for (const { x, y, dist } of revealed) {
     const el = getCellEl(x, y);
     if (!el) continue;
-    const c = b.cells[y][x];
-    applyCellContent(el, c, false);
-    const delay = Math.min(dist * 18, 180);
-    el.style.animationDelay = delay + 'ms';
+    applyCellContent(el, b.cells[y][x], false);
+    el.style.animationDelay = Math.min(dist * 18, 180) + 'ms';
     el.classList.add('just-revealed');
     el.addEventListener('animationend', () => el.classList.remove('just-revealed'), { once: true });
   }
@@ -1085,21 +1438,18 @@ function computeCellSize(w, h) {
   if (!boardWrap) return 20;
   const availW = boardWrap.clientWidth - 16;
   const availH = boardWrap.clientHeight - 16;
-  const byW = Math.floor(availW / w);
-  const byH = Math.floor(availH / h);
-  return Math.max(10, Math.min(byW, byH, 36));
+  return Math.max(10, Math.min(Math.floor(availW / w), Math.floor(availH / h), 36));
 }
 
 // ── HUD & Timer ───────────────────────────────────────────────────────────────
 
 function updateHUD() {
-  const b = getActiveBoard();
+  const b = classicState?.board;
   const flagEl = containerEl.querySelector('#ms-flag-count');
   const timeEl = containerEl.querySelector('#ms-timer');
   if (!flagEl || !timeEl) return;
   if (!b) { flagEl.textContent = '0'; timeEl.textContent = '00:00'; return; }
-  const remaining = b.mineCount - b.flagCount;
-  flagEl.textContent = String(remaining);
+  flagEl.textContent = String(b.mineCount - b.flagCount);
   if (b.startTime) {
     const elapsed = b.endTime ? b.endTime - b.startTime : Date.now() - b.startTime;
     timeEl.textContent = formatTime(Math.floor(elapsed / 1000));
@@ -1119,10 +1469,10 @@ function stopTimer() {
 
 function formatTime(s) {
   const m = Math.floor(s / 60), sec = s % 60;
-  return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 }
 
-// ── Overlay ───────────────────────────────────────────────────────────────────
+// ── Overlay (classic mode) ────────────────────────────────────────────────────
 
 function showOverlay(title, sub, btnLabel) {
   const ov = containerEl.querySelector('#ms-overlay');
@@ -1131,10 +1481,7 @@ function showOverlay(title, sub, btnLabel) {
   const t = ov.querySelector('#ms-overlay-title');
   const s = ov.querySelector('#ms-overlay-sub');
   const b = ov.querySelector('#ms-overlay-btn');
-  if (t) {
-    t.textContent = title;
-    t.className = title.startsWith('✓') ? 'win' : 'lose';
-  }
+  if (t) { t.textContent = title; t.className = title.startsWith('✓') ? 'win' : 'lose'; }
   if (s) s.textContent = sub;
   if (b) b.textContent = btnLabel;
 }
@@ -1148,11 +1495,17 @@ function hideOverlay() {
 
 export function destroy() {
   stopTimer();
+  ewStop();
+  if (ewAutoSaveId) { clearInterval(ewAutoSaveId); ewAutoSaveId = null; }
+  if (ewWorld?.startTime) ewSave();
   if (containerEl) { containerEl.innerHTML = ''; containerEl = null; }
   const st = document.getElementById('ms-styles');
   if (st) st.remove();
-  classicState = null;
-  endlessWorld = null;
-  activeMode = null;
-  optRef = null;
+  classicState   = null;
+  activeMode     = null;
+  optRef         = null;
+  ewWorld        = null;
+  ewViewX = ewViewY = 0;
+  ewCellSize = EW_CELL_DEFAULT;
+  ewHoverCell = ewHoverSect = ewFailRects = null;
 }

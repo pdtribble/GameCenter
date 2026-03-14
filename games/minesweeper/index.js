@@ -237,126 +237,38 @@ function chordReveal(classicState, x, y) {
   return { revealed: allRevealed, exploded: anyExploded };
 }
 
-// ── Endless mode ──────────────────────────────────────────────────────────────
+// ── Endless mode — section-based infinite grid helpers ────────────────────────
 
-function sectionKey(x, y) { return `${x},${y}`; }
+const EL_SECTION_SIZE = 8;
+const EL_MINES_PER_SECTION = 10;
 
-function chebyshevDist(x, y) { return Math.max(Math.abs(x), Math.abs(y)); }
-
-function minesForDist(d) {
-  if (d === 0) return 8;
-  if (d <= 2) return 12;
-  if (d <= 5) return 15;
-  return 18;
+/** Convert absolute cell coords to section + local coords. */
+function elToSection(absX, absY) {
+  const sX = Math.floor(absX / EL_SECTION_SIZE);
+  const sY = Math.floor(absY / EL_SECTION_SIZE);
+  const localX = ((absX % EL_SECTION_SIZE) + EL_SECTION_SIZE) % EL_SECTION_SIZE;
+  const localY = ((absY % EL_SECTION_SIZE) + EL_SECTION_SIZE) % EL_SECTION_SIZE;
+  return { sX, sY, localX, localY };
 }
 
-/**
- * Create a new endless world.
- */
-function generateEndlessWorld(seed) {
-  const world = {
-    seed,
-    currentSection: { x: 0, y: 0 },
-    sections: {},
-  };
-  // Unlock and generate starting section
-  const startSect = _makeSection(world, 0, 0);
-  world.sections[sectionKey(0, 0)] = startSect;
-  return world;
-}
-
-function _makeSection(world, gx, gy) {
-  const dist = chebyshevDist(gx, gy);
-  const mines = minesForDist(dist);
-  const sect = {
-    x: gx, y: gy,
-    status: 'active',
-    failCount: 0,
-    board: _generateSectionBoard(world.seed, gx, gy, 0, mines),
-  };
-  return sect;
-}
-
-/**
- * Generate a seeded board for an endless section.
- * Never uses Math.random().
- */
-function generateEndlessSection(worldSeed, gridX, gridY, failCount) {
-  const dist = chebyshevDist(gridX, gridY);
-  const mines = minesForDist(dist);
-  return _generateSectionBoard(worldSeed, gridX, gridY, failCount, mines);
-}
-
-function _generateSectionBoard(worldSeed, gridX, gridY, failCount, mines) {
-  const seed = ((worldSeed ^ (gridX * 73856093) ^ (gridY * 19349663) ^ (failCount * 83492791)) >>> 0);
-  const rng = mulberry32(seed);
-  const board = makeBoard(9, 9);
-  board.mineCount = mines;
-  board.firstClickDone = true;
-  board.startTime = null;
-
-  // Place mines randomly (no safe zone — section starts with all cells hidden)
+/** Generate 10 mines for section (sX,sY) using seeded Fisher-Yates. */
+function elGenMines(worldSeed, sX, sY, resetCount, safeSet) {
+  let seed = worldSeed ^ (sX * 1000003) ^ (sY * 999983);
+  if (resetCount > 0) seed ^= resetCount * 7919;
+  const rng = mulberry32(seed >>> 0);
   const positions = [];
-  for (let y = 0; y < 9; y++) for (let x = 0; x < 9; x++) positions.push({ x, y });
-  // Shuffle
-  for (let i = positions.length - 1; i > 0; i--) {
+  for (let i = 0; i < 64; i++) positions.push(i);
+  for (let i = 63; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
     [positions[i], positions[j]] = [positions[j], positions[i]];
   }
-  for (let i = 0; i < mines; i++) board.cells[positions[i].y][positions[i].x].mine = true;
-  computeAdjacency(board);
-  return board;
-}
-
-/**
- * Mark a section cleared; unlock adjacent sections.
- */
-function clearSection(world, gx, gy) {
-  const key = sectionKey(gx, gy);
-  if (!world.sections[key]) return;
-  world.sections[key].status = 'cleared';
-  world.sections[key].board = null;
-
-  // Unlock 4-directional neighbors
-  const dirs = [[0,1],[0,-1],[1,0],[-1,0]];
-  for (const [dx, dy] of dirs) {
-    const nx = gx + dx, ny = gy + dy;
-    const nk = sectionKey(nx, ny);
-    if (!world.sections[nk]) {
-      world.sections[nk] = _makeSection(world, nx, ny);
-    }
+  const mines = new Set();
+  for (const pos of positions) {
+    if (mines.size >= EL_MINES_PER_SECTION) break;
+    const lx = pos % EL_SECTION_SIZE, ly = Math.floor(pos / EL_SECTION_SIZE);
+    if (!safeSet || !safeSet.has(`${lx},${ly}`)) mines.add(`${lx},${ly}`);
   }
-}
-
-/**
- * Fail a section — increment fail count and regenerate with new seed.
- */
-function failSection(world, gx, gy) {
-  const key = sectionKey(gx, gy);
-  if (!world.sections[key]) return;
-  const s = world.sections[key];
-  s.failCount++;
-  s.status = 'active';
-  s.board = generateEndlessSection(world.seed, gx, gy, s.failCount);
-}
-
-/** Set the current section the player is viewing/playing. */
-function setCurrentSection(world, gx, gy) {
-  world.currentSection = { x: gx, y: gy };
-  const key = sectionKey(gx, gy);
-  if (world.sections[key] && world.sections[key].board) {
-    world.sections[key].board.startTime = world.sections[key].board.startTime || Date.now();
-  }
-}
-
-/** Serialize world to JSON string (strips non-essential board data for size). */
-function serializeWorld(world) {
-  return JSON.stringify(world);
-}
-
-/** Deserialize world from JSON string. */
-function deserializeWorld(json) {
-  return JSON.parse(json);
+  return mines;
 }
 
 module.exports = {
@@ -366,22 +278,17 @@ module.exports = {
   revealCell,
   toggleFlag,
   chordReveal,
-  // Endless
-  generateEndlessWorld,
-  generateEndlessSection,
-  clearSection,
-  failSection,
-  setCurrentSection,
-  serializeWorld,
-  deserializeWorld,
-  // Exposed for client-side use (same functions, ES-module re-exports handle it)
+  // Endless helpers
+  elToSection,
+  elGenMines,
+  EL_SECTION_SIZE,
+  EL_MINES_PER_SECTION,
+  // Shared helpers
   mulberry32,
   makeBoard,
   computeAdjacency,
   bfsReveal,
   checkWin,
   neighbors,
-  chebyshevDist,
-  minesForDist,
   DIFFICULTIES,
 };
