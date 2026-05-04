@@ -1,4 +1,3 @@
-// Tile types
 export const EMPTY = 0;
 export const SOLID = 1;
 export const FOOD = 2;
@@ -7,143 +6,132 @@ export const EXIT = 3;
 export const LEVELS = [
   {
     id: 0,
-    name: 'First Fall',
+    name: 'Gravity',
     description: 'Learn to fall',
     grid: [
-      '############',
-      '#S.F........#',
-      '###.########',
-      '###.....E...#',
-      '#############',
+      '##############',
+      '#S..F........#',
+      '###########..#',
+      '###########..#',
+      '###########E.#',
+      '##############',
     ],
   },
   {
     id: 1,
-    name: 'The Ledge',
-    description: 'Navigate the drop',
+    name: 'The Drop',
+    description: 'Fall through shaft',
     grid: [
-      '##########',
-      '#S...F...#',
-      '#######..#',
-      '#######..#',
-      '#######E.#',
-      '##########',
+      '################',
+      '#S..FF.........#',
+      '#########......#',
+      '#########......#',
+      '#########......#',
+      '#########.E....#',
+      '################',
     ],
   },
   {
     id: 2,
-    name: 'S-Curve',
-    description: 'Twist through corridors',
+    name: 'Deep Shaft',
+    description: 'Vertical descent',
     grid: [
-      '#############',
-      '#S.FF........#',
-      '######.######',
-      '######.######',
-      '######.######',
-      '......#......',
-      '######.######',
-      '######E......',
-      '#############',
+      '################',
+      '#S..FFF........#',
+      '###########....#',
+      '###########....#',
+      '###########....#',
+      '###########....#',
+      '###########....#',
+      '###########.E..#',
+      '################',
     ],
   },
   {
     id: 3,
-    name: 'The Shaft',
-    description: 'Bridge the vertical shaft',
+    name: 'Two Drops',
+    description: 'Double descent',
     grid: [
-      '##########',
-      '#S..FFF..#',
-      '########.#',
-      '########.#',
-      '########.#',
-      '########E#',
-      '##########',
+      '################',
+      '#S...FFF.......#',
+      '##########.....#',
+      '##########.....#',
+      '##########.....#',
+      '######.....#####',
+      '######.....#####',
+      '######E....#####',
+      '######.....#####',
+      '################',
     ],
   },
   {
     id: 4,
-    name: 'Double Drop',
-    description: 'Two sequential drops',
+    name: 'Canyon Path',
+    description: 'Navigate canyon',
     grid: [
-      '#############',
-      '#S..FFF......#',
-      '########.####',
-      '########.####',
-      '........#....',
-      '########.####',
-      '########.####',
-      '########E...#',
-      '#############',
+      '##################',
+      '#S...FFF..........#',
+      '##########......##',
+      '##########......##',
+      '##########......##',
+      '########........##',
+      '########........##',
+      '########.E......##',
+      '##################',
     ],
   },
   {
     id: 5,
-    name: 'The Overhang',
-    description: 'Bridge the horizontal gap',
+    name: 'The Gauntlet',
+    description: 'Complex puzzle',
     grid: [
-      '###############',
-      '#S..FFFF.......#',
-      '##########.####',
-      '##########.####',
-      '##########.####',
-      '##########E...#',
-      '################',
+      '####################',
+      '#S....FFFF.........#',
+      '############......##',
+      '############......##',
+      '########............#',
+      '########.....#######',
+      '########.....#......',
+      '..........#..#......',
+      '##########.E.#######',
+      '####################',
     ],
   },
   {
     id: 6,
-    name: 'Winding Canyon',
-    description: 'Navigate the canyon maze',
+    name: 'Spiral Tower',
+    description: 'Spiral descent',
     grid: [
-      '##############',
-      '#S.FFFF.......#',
-      '########......#',
-      '########.#####',
-      '........##....',
-      '#########.####',
-      '#########.####',
-      '#########.####',
-      '.........#....',
-      '#########E###',
-      '##############',
+      '####################',
+      '#S.....FFFFF.......#',
+      '################...#',
+      '################...#',
+      '..................##',
+      '################...#',
+      '################...#',
+      '..................##',
+      '################...#',
+      '################E..#',
+      '####################',
     ],
   },
   {
     id: 7,
-    name: 'The Maze',
-    description: 'Navigate the corridor maze',
+    name: 'The Nightmare',
+    description: 'Ultimate challenge',
     grid: [
-      '################',
-      '#S..FFFFF.......#',
-      '#########.######',
-      '#########.######',
-      '#########......#',
-      '###############.#',
-      '#...............#',
-      '#.##############',
-      '#.#.............',
-      '#.#####E########',
-      '################',
-    ],
-  },
-  {
-    id: 8,
-    name: 'The Spiral',
-    description: 'Complete the spiral descent',
-    grid: [
-      '##############',
-      '#S..FFFFFF...#',
-      '########.....#',
-      '########.####',
-      '........##...',
-      '########.####',
-      '########.....#',
-      '########.####',
-      '........##...',
-      '########.####',
-      '########.....#',
-      '########E...#',
-      '##############',
+      '########################',
+      '#S......FFFFFF.........#',
+      '####################..##',
+      '####################..##',
+      '................########',
+      '##########........#####',
+      '##########........#....',
+      '##########...#...#....#',
+      '##........#...#...####.',
+      '##......#...#...........#',
+      '##....#...#...E.########',
+      '########################',
     ],
   },
 ];
@@ -176,7 +164,6 @@ export function initLevel(levelIndex) {
   const height = tiles.length;
   const width = tiles[0].length;
 
-  // Count food for total length needed
   let foodCount = 0;
   for (let row = 0; row < height; row++) {
     for (let col = 0; col < width; col++) {
@@ -200,7 +187,6 @@ export function initLevel(levelIndex) {
 }
 
 function isGrounded(snake, tiles, height) {
-  // Check if any segment has a solid tile directly below it
   for (const segment of snake) {
     const below = segment.y + 1;
     if (below < height && tiles[below] && tiles[below][segment.x] === SOLID) {
@@ -213,14 +199,11 @@ function isGrounded(snake, tiles, height) {
 function applyGravity(state) {
   const { snake, tiles, height } = state;
 
-  // Fall until grounded or out of bounds
   while (!isGrounded(snake, tiles, height)) {
-    // Move all segments down 1
     for (const segment of snake) {
       segment.y += 1;
     }
 
-    // Check if any segment is out of bounds (off bottom)
     for (const segment of snake) {
       if (segment.y >= height) {
         return { ...state, phase: 'dead' };
@@ -234,7 +217,6 @@ function applyGravity(state) {
 export function processInput(state, direction) {
   if (state.phase !== 'playing') return state;
 
-  // Can only jump when grounded
   if (direction === 'up' && !isGrounded(state.snake, state.tiles, state.height)) {
     return state;
   }
@@ -243,13 +225,11 @@ export function processInput(state, direction) {
   const head = newState.snake[0];
   const newHead = { ...head };
 
-  // Move head in direction
   if (direction === 'left') newHead.x -= 1;
   else if (direction === 'right') newHead.x += 1;
   else if (direction === 'up') newHead.y -= 1;
   else if (direction === 'down') newHead.y += 1;
 
-  // Bounds check
   if (newHead.x < 0 || newHead.x >= newState.width ||
       newHead.y < 0 || newHead.y >= newState.height) {
     return { ...newState, phase: 'dead' };
@@ -257,40 +237,31 @@ export function processInput(state, direction) {
 
   const tileAtHead = newState.tiles[newHead.y][newHead.x];
 
-  // Hit solid wall
   if (tileAtHead === SOLID) {
     return { ...newState, phase: 'dead' };
   }
 
-  // Self collision
   for (const segment of newState.snake) {
     if (segment.x === newHead.x && segment.y === newHead.y) {
       return { ...newState, phase: 'dead' };
     }
   }
 
-  // Check win BEFORE gravity (important!)
   if (tileAtHead === EXIT) {
     return { ...newState, phase: 'won', snake: [newHead, ...newState.snake.slice(0, -1)] };
   }
 
-  // Add new head, remove tail (unless eating food)
   const newSnake = [newHead, ...newState.snake];
 
   if (tileAtHead === FOOD) {
-    // Eat food: don't remove tail, mark tile as empty
     newState.tiles[newHead.y][newHead.x] = EMPTY;
     newState.totalFoodEaten += 1;
   } else {
-    // Normal move: remove tail
     newSnake.pop();
   }
 
   newState.snake = newSnake;
-
-  // Apply gravity
   newState = applyGravity(newState);
 
   return newState;
 }
-
