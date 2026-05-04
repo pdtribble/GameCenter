@@ -588,12 +588,13 @@ function startLevel(idx) {
   screen = 'playing';
   state = initLevel(idx);
 
-  const levelSelectHTML = containerEl.querySelector('#snp-ls-body');
+  const root = containerEl.querySelector('#snp-root');
+  const levelSelectHTML = root.querySelector('#snp-ls-body');
   if (levelSelectHTML) {
     levelSelectHTML.remove();
   }
 
-  const wrap = containerEl.querySelector('#snp-canvas-wrap');
+  const wrap = root.querySelector('#snp-canvas-wrap');
   if (!wrap) {
     const hudDiv = document.createElement('div');
     hudDiv.id = 'snp-hud';
@@ -605,7 +606,9 @@ function startLevel(idx) {
       </div>
       <div class="snp-hud-moves"></div>
     `;
-    containerEl.appendChild(hudDiv);
+
+    const hint = root.querySelector('#snp-hint');
+    hint.insertAdjacentElement('beforebegin', hudDiv);
 
     const canvasWrap = document.createElement('div');
     canvasWrap.id = 'snp-canvas-wrap';
@@ -614,7 +617,7 @@ function startLevel(idx) {
     canvasEl.id = 'snp-canvas';
     canvasEl.style.cssText = 'display:block; image-rendering:pixelated;';
     canvasWrap.appendChild(canvasEl);
-    containerEl.appendChild(canvasWrap);
+    hint.insertAdjacentElement('beforebegin', canvasWrap);
 
     ctx = canvasEl.getContext('2d');
 
@@ -627,7 +630,7 @@ function startLevel(idx) {
   resizeObserverRef = new ResizeObserver(() => {
     computeLayout();
   });
-  resizeObserverRef.observe(containerEl.querySelector('#snp-canvas-wrap'));
+  resizeObserverRef.observe(root.querySelector('#snp-canvas-wrap'));
 
   startRAF();
   drawFrame();
@@ -651,10 +654,11 @@ function showLevelSelect() {
     resizeObserverRef = null;
   }
 
-  buildLevelSelect();
+  const root = containerEl.querySelector('#snp-root');
+  buildLevelSelect(root);
 }
 
-function buildLevelSelect() {
+function buildLevelSelect(root) {
   let html = '<div id="snp-ls-body" style="flex:1; overflow-y:auto; padding:16px; display:grid; grid-template-columns:repeat(auto-fill, minmax(140px,1fr)); gap:12px; align-content:start;">';
 
   for (let i = 0; i < LEVELS.length; i++) {
@@ -674,9 +678,11 @@ function buildLevelSelect() {
   }
 
   html += '</div>';
-  containerEl.insertAdjacentHTML('beforeend', html);
 
-  const body = containerEl.querySelector('#snp-ls-body');
+  const hint = root.querySelector('#snp-hint');
+  hint.insertAdjacentHTML('beforebegin', html);
+
+  const body = root.querySelector('#snp-ls-body');
   body.querySelectorAll('.snp-lc:not(.snp-lc--locked)').forEach(card => {
     card.addEventListener('click', () => {
       const idx = parseInt(card.dataset.level);
@@ -744,7 +750,7 @@ export function render(container, options) {
   containerEl.addEventListener('touchstart', handleTouchStart);
   containerEl.addEventListener('touchend', handleTouchEnd);
 
-  buildLevelSelect();
+  buildLevelSelect(root);
 }
 
 export function update() {
