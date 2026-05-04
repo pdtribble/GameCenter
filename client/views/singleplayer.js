@@ -137,13 +137,16 @@ const tetrisSavesP = playerId
   const idleClickerSavesP = playerId
     ? fetch('/api/sp/saves/idle-clicker').then(r => r.ok ? r.json() : []).catch(() => [])
     : Promise.resolve([]);
+  const snakePuzzleSavesP = playerId
+    ? fetch('/api/sp/saves/snake-puzzle').then(r => r.ok ? r.json() : []).catch(() => [])
+    : Promise.resolve([]);
 
   // Check if guest (to show progress warning)
   const statsApiP = fetch('/api/me/stats').then(r => r.json()).catch(() => null);
 
   let bestscoreHandler = null;
 
-  Promise.all([msStatsP, snakeSavesP, t48SavesP, wordleSavesP, sudokuSavesP, pacmanSavesP, tetrisSavesP, pongSavesP, breakoutSavesP, idleClickerSavesP, statsApiP]).then(([msStats, snakeSaves, t48Saves, wordleSaves, sudokuSaves, pacmanSaves, tetrisSaves, pongSaves, breakoutSaves, idleClickerSaves, meStats]) => {
+  Promise.all([msStatsP, snakeSavesP, t48SavesP, wordleSavesP, sudokuSavesP, pacmanSavesP, tetrisSavesP, pongSavesP, breakoutSavesP, idleClickerSavesP, snakePuzzleSavesP, statsApiP]).then(([msStats, snakeSaves, t48Saves, wordleSaves, sudokuSaves, pacmanSaves, tetrisSaves, pongSaves, breakoutSaves, idleClickerSaves, snakePuzzleSaves, meStats]) => {
     const snakeStats = (() => {
       const hs = snakeSaves.find(s => s.slot === 'highscore');
       if (hs?.data?.highScore != null) return { highScore: hs.data.highScore };
@@ -324,6 +327,18 @@ const tetrisStats = (() => {
         accent: '#39ff14',
         stats:  idleClickerStats,
         formatStats: (s) => s?.bestScore != null ? `<span>best <span style="color:var(--gc-gold,#f0c040)">${Math.floor(s.bestScore).toLocaleString()}</span></span>` : '',
+      },
+      {
+        id:     'snake-puzzle',
+        name:   'Snake Puzzle',
+        icon:   '🐍',
+        desc:   'Use gravity and length to solve physics-based puzzles.',
+        accent: '#00e676',
+        stats:  (() => {
+          const prog = snakePuzzleSaves.find(s => s.slot === 'progress');
+          return prog?.data || null;
+        })(),
+        formatStats: (s) => s ? `<span>level <span style="color:var(--gc-gold,#f0c040)">${s.completedLevels?.length || 0}/5</span></span>` : '0/5',
       },
     ];
 
