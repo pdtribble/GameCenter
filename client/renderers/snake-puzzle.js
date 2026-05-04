@@ -215,7 +215,11 @@ function handleTouchEnd(e) {
   touchStartY = null;
 }
 
-function destroy() {
+export function update() {
+  // Renderer updates via RAF loop, no external update needed
+}
+
+export function destroy() {
   if (keyHandlerRef) {
     document.removeEventListener('keydown', keyHandlerRef);
   }
