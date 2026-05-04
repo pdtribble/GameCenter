@@ -1,12 +1,10 @@
-'use strict';
-
 // Tile types
-const EMPTY = 0;
-const SOLID = 1;
-const FOOD = 2;
-const EXIT = 3;
+export const EMPTY = 0;
+export const SOLID = 1;
+export const FOOD = 2;
+export const EXIT = 3;
 
-const LEVELS = [
+export const LEVELS = [
   {
     id: 0,
     name: 'Gravity 101',
@@ -96,7 +94,7 @@ function parseTiles(grid) {
   return { tiles, startPos };
 }
 
-function initLevel(levelIndex) {
+export function initLevel(levelIndex) {
   const level = LEVELS[levelIndex];
   const { tiles, startPos } = parseTiles(level.grid);
   const height = tiles.length;
@@ -157,7 +155,7 @@ function applyGravity(state) {
   return state;
 }
 
-function processInput(state, direction) {
+export function processInput(state, direction) {
   if (state.phase !== 'playing') return state;
 
   // Can only jump when grounded
@@ -220,12 +218,3 @@ function processInput(state, direction) {
   return newState;
 }
 
-module.exports = {
-  LEVELS,
-  EMPTY,
-  SOLID,
-  FOOD,
-  EXIT,
-  initLevel,
-  processInput,
-};
